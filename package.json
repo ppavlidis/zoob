@@ -1,0 +1,23 @@
+{
+  "name": "zoob",
+  "version": "0.1.0",
+  "description": "Obsidian plugin for Zotero (w/ Better BibTeX): rich bibliography side panel, citation suggester, hover preview, live refs block.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
+  },
+  "keywords": [],
+  "author": "ppavlidis",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@codemirror/state": "^6.4.0",
+    "@codemirror/view": "^6.23.0",
+    "builtin-modules": "^3.3.0",
+    "esbuild": "^0.20.0",
+    "obsidian": "latest",
+    "tslib": "^2.6.2",
+    "typescript": "^5.5.3"
+  }
+}

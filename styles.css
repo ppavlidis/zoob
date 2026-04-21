@@ -1,0 +1,778 @@
+/* zoob — Obsidian plugin styles
+ * Uses Obsidian CSS variables so the plugin adapts to light/dark and custom themes. */
+
+/* ------------------------- Cite token (CM6 + reading) ------------------------- */
+
+.zoob-cite {
+  border-bottom: 1px dashed var(--color-accent, var(--text-accent));
+  cursor: pointer;
+  transition: background-color 120ms ease;
+  border-radius: 2px;
+}
+.zoob-cite:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+/* ------------------------------ Bibliography view ------------------------------ */
+
+.zoob-view {
+  padding: 0;
+}
+.zoob-view .view-content {
+  padding: 0;
+}
+.zoob-view__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 6px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  position: sticky;
+  top: 0;
+  background: var(--background-primary);
+  z-index: 1;
+}
+.zoob-view__title {
+  font-weight: 600;
+  font-size: var(--font-ui-medium);
+}
+.zoob-view__count {
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-left: 4px;
+}
+.zoob-view__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.zoob-view__icon-button {
+  background: transparent;
+  border: none;
+  padding: 4px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.zoob-view__icon-button:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+.zoob-view__info {
+  padding: 4px 12px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.zoob-view__bib {
+  font-family: var(--font-monospace);
+}
+.zoob-view__state {
+  padding: 12px;
+}
+.zoob-view__message {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.zoob-view__message--offline {
+  color: var(--text-normal);
+  background: var(--background-modifier-error, rgba(var(--color-red-rgb), 0.15));
+  border: 1px solid var(--text-error);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.zoob-view__error-title {
+  font-weight: 600;
+  color: var(--text-error);
+  margin-bottom: 4px;
+}
+.zoob-view__error-detail {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  word-break: break-word;
+}
+.zoob-view__error-hint {
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.zoob-view__error-actions {
+  display: flex;
+  gap: 6px;
+}
+.zoob-view__error-button {
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  cursor: pointer;
+  font-size: var(--font-ui-small);
+}
+.zoob-view__error-button:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--interactive-accent);
+}
+/* Status uses distinct icon SHAPES (circle-check vs triangle-alert) so state
+ * is legible without relying on color — safe for red-green color blindness.
+ * Colors are Obsidian's muted/accent/warning, which are blue-ish and amber —
+ * a deuteranopia/protanopia-friendly pairing. */
+.zoob-view__health {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+.zoob-view__health .svg-icon {
+  width: 16px;
+  height: 16px;
+}
+.zoob-view__health--unknown { color: var(--text-muted); }
+.zoob-view__health--ok { color: var(--interactive-accent); }
+.zoob-view__health--bad {
+  color: var(--color-orange, #d97706);
+  animation: zoob-health-pulse 1.8s ease-in-out 2;
+}
+@keyframes zoob-health-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.25); }
+}
+.zoob-view__list {
+  padding: 6px 8px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ------------------------------------ Cards ------------------------------------ */
+
+.zoob-card {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.zoob-card--hover {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+}
+.zoob-card--flash {
+  animation: zoob-flash 900ms ease-out;
+}
+@keyframes zoob-flash {
+  0%   { background: var(--interactive-accent); color: var(--text-on-accent); }
+  40%  { background: var(--background-modifier-border-hover); }
+  100% { background: var(--background-secondary); }
+}
+
+.zoob-card__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.zoob-card__index {
+  width: 1.6em;
+  height: 1.6em;
+  border-radius: 50%;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.zoob-card__citekey {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  background: var(--background-modifier-border);
+  color: var(--text-normal);
+  padding: 1px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.zoob-card__year {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+.zoob-card__type {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-style: italic;
+  margin-left: auto;
+}
+.zoob-card__title {
+  font-weight: 600;
+  line-height: 1.35;
+  cursor: pointer;
+}
+.zoob-card__title:hover {
+  color: var(--text-accent);
+}
+.zoob-card__authors {
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+.zoob-card__venue {
+  font-style: italic;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
+/* CSL-formatted bibliography entry (BBT item.bibliography output). */
+.zoob-card__bib {
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+  color: var(--text-normal);
+  cursor: pointer;
+}
+.zoob-card__bib:hover {
+  color: var(--text-accent);
+}
+.zoob-card__bib .csl-entry {
+  /* BBT wraps each entry in a csl-entry div. Reset any hanging-indent so it
+     reads cleanly inside a card. */
+  padding: 0;
+  margin: 0;
+  text-indent: 0;
+}
+.zoob-card__bib i,
+.zoob-card__bib em {
+  font-style: italic;
+}
+.zoob-card__bib b,
+.zoob-card__bib strong {
+  font-weight: 600;
+}
+.zoob-card__bib a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.zoob-card__summary {
+  border-left: 3px solid var(--interactive-accent);
+  padding: 6px 10px;
+  background: var(--background-secondary);
+  border-radius: 0 6px 6px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.zoob-card__summary-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-ui-smaller);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-accent);
+  font-weight: 600;
+}
+.zoob-card__summary-label .svg-icon {
+  width: 13px;
+  height: 13px;
+}
+.zoob-card__summary-body {
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+  color: var(--text-normal);
+  white-space: pre-wrap;
+}
+
+.zoob-card__abstract {
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  line-height: 1.45;
+}
+.zoob-card__abstract--collapsible .zoob-card__abstract-toggle {
+  background: transparent;
+  border: none;
+  color: var(--text-accent);
+  cursor: pointer;
+  padding: 0;
+  font-size: var(--font-ui-smaller);
+  margin-top: 2px;
+}
+
+.zoob-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.zoob-card__tag {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.zoob-card__attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+.zoob-card__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  padding: 2px 8px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+}
+.zoob-card__badge:hover {
+  color: var(--text-normal);
+  border-color: var(--interactive-accent);
+}
+.zoob-card__badge--pdf { color: var(--text-accent); }
+.zoob-card__badge--annotation { color: var(--color-orange, var(--text-accent)); }
+.zoob-card__badge--note { color: var(--color-yellow, var(--text-accent)); }
+
+.zoob-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: var(--font-ui-smaller);
+}
+.zoob-card__link {
+  color: var(--text-muted);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.zoob-card__link:hover {
+  color: var(--text-accent);
+  text-decoration: underline;
+}
+
+.zoob-card__actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+.zoob-card__action {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 3px 5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+.zoob-card__action:hover {
+  color: var(--text-normal);
+  border-color: var(--background-modifier-border);
+  background: var(--background-primary);
+}
+
+.zoob-card__pdf {
+  margin-top: 4px;
+}
+
+/* ---------------------------- Annotations (quotes) ---------------------------- */
+
+.zoob-card__annotations {
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.zoob-card__annotations-toggle {
+  background: transparent;
+  border: none;
+  padding: 2px 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-ui-smaller);
+  align-self: flex-start;
+  border-radius: 4px;
+}
+.zoob-card__annotations-toggle:hover {
+  color: var(--text-normal);
+  background: var(--background-primary);
+}
+.zoob-card__annotations-toggle.is-expanded {
+  color: var(--text-normal);
+}
+.zoob-card__annotations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 2px;
+}
+.zoob-annotation {
+  --zoob-ann-color: var(--text-accent);
+  border-left: 3px solid var(--zoob-ann-color);
+  padding: 4px 8px;
+  background: var(--background-primary);
+  border-radius: 4px;
+  cursor: grab;
+  transition: background-color 120ms ease, transform 120ms ease;
+}
+.zoob-annotation:hover {
+  background: var(--background-modifier-hover);
+}
+.zoob-annotation:active {
+  cursor: grabbing;
+}
+.zoob-annotation.is-dragging {
+  opacity: 0.6;
+  transform: scale(0.99);
+}
+.zoob-annotation__meta {
+  display: flex;
+  gap: 6px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+.zoob-annotation__page { font-family: var(--font-monospace); }
+.zoob-annotation__text {
+  font-size: var(--font-ui-small);
+  line-height: 1.4;
+  color: var(--text-normal);
+}
+.zoob-annotation__comment {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--background-modifier-border);
+  font-style: italic;
+}
+
+/* ------------------------------------ Hover ------------------------------------ */
+
+.zoob-hover {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  min-width: 340px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  /* Theme-aware but floored: never smaller than 14px even if the active
+     theme shrinks --font-ui-small. Children use em so they scale together. */
+  font-size: max(14px, var(--font-ui-small));
+  line-height: 1.45;
+}
+.zoob-hover .zoob-card {
+  padding: 0;
+  border: none;
+  background: transparent;
+  gap: 4px;
+}
+.zoob-hover .zoob-card__citekey {
+  font-size: 0.72em;
+  max-width: 16em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.zoob-hover .zoob-card__year,
+.zoob-hover .zoob-card__type {
+  font-size: 0.78em;
+}
+.zoob-hover .zoob-card__title {
+  font-size: 1.02em;
+  line-height: 1.3;
+}
+.zoob-hover .zoob-card__authors,
+.zoob-hover .zoob-card__venue,
+.zoob-hover .zoob-card__abstract,
+.zoob-hover .zoob-card__bib {
+  font-size: 0.92em;
+}
+.zoob-hover .zoob-card__abstract {
+  line-height: 1.4;
+}
+.zoob-hover .zoob-card__summary-body {
+  font-size: 0.92em;
+}
+.zoob-hover .zoob-card__pdf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 0.85em;
+}
+.zoob-hover .zoob-card__pdf .zoob-card__link {
+  color: var(--text-muted);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 20em;
+}
+.zoob-hover .zoob-card__pdf .zoob-card__link:hover {
+  color: var(--text-accent);
+  text-decoration: underline;
+}
+.zoob-hover--error {
+  color: var(--text-error);
+  font-size: max(14px, var(--font-ui-small));
+}
+.zoob-hover--pinned {
+  outline: 2px solid var(--interactive-accent);
+}
+.zoob-card__badge--scholar {
+  color: var(--text-accent);
+  text-decoration: none;
+}
+.zoob-card__badge--scholar:hover {
+  background: var(--background-modifier-hover);
+}
+.zoob-card__badge--na {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* --------------------------------- Suggester ---------------------------------- */
+
+.zoob-suggest {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+}
+.zoob-suggest__line1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.zoob-suggest__key {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-accent);
+}
+.zoob-suggest__year {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+.zoob-suggest__title {
+  font-weight: 500;
+  color: var(--text-normal);
+}
+.zoob-suggest__author {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+/* Placeholder row shown while a BBT search is in flight or returned nothing.
+ * Italic + muted so it's visibly not selectable. */
+.zoob-suggest--searching .zoob-suggest__title {
+  color: var(--text-muted);
+  font-style: italic;
+  font-weight: 400;
+}
+
+/* ------------------------------------ Refs ------------------------------------ */
+
+.zoob-refs {
+  margin: 1.2em 0;
+  border-top: 2px solid var(--background-modifier-border);
+  padding-top: 0.8em;
+}
+.zoob-refs__heading {
+  font-weight: 600;
+  margin-bottom: 0.6em;
+  font-size: 1.1em;
+}
+.zoob-refs__list {
+  font-size: var(--font-text-size);
+  line-height: 1.5;
+}
+.zoob-refs__list .csl-entry {
+  margin-bottom: 0.5em;
+  padding-left: 1.4em;
+  text-indent: -1.4em;
+}
+
+/* Compact bibliography rows in the side panel. */
+.zoob-view__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.zoob-bibrow {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 6px;
+  row-gap: 2px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: var(--font-ui-small);
+  line-height: 1.4;
+}
+.zoob-bibrow:hover {
+  background: var(--background-modifier-hover);
+}
+.zoob-bibrow__index {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  padding-top: 1px;
+}
+.zoob-bibrow__body {
+  min-width: 0;
+}
+.zoob-bibrow__entry {
+  cursor: pointer;
+}
+.zoob-bibrow__entry .csl-entry {
+  display: inline;
+}
+.zoob-bibrow__entry:hover {
+  color: var(--text-accent);
+}
+.zoob-csl__tail {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.zoob-csl__cite {
+  font-variant-numeric: tabular-nums;
+}
+.zoob-csl__doi {
+  color: var(--text-accent);
+  text-decoration: none;
+}
+.zoob-csl__doi:hover {
+  text-decoration: underline;
+}
+.zoob-bibrow__actions {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  opacity: 0.65;
+}
+.zoob-bibrow:hover .zoob-bibrow__actions {
+  opacity: 1;
+}
+.zoob-bibrow__citekey {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--background-secondary);
+}
+.zoob-bibrow__citekey:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-border);
+}
+.zoob-bibrow__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+}
+.zoob-bibrow__icon:hover:not(:disabled) {
+  color: var(--text-normal);
+  background: var(--background-modifier-border);
+}
+.zoob-bibrow__icon--disabled,
+.zoob-bibrow__icon:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+.zoob-bibrow__icon .svg-icon {
+  width: 14px;
+  height: 14px;
+}
+.zoob-bibrow--flash {
+  animation: zoob-flash 900ms ease-out;
+}
+
+/* View-header action — muted when the active note has no citations. Stays clickable. */
+.view-action.zoob-view-action.zoob-action--muted {
+  opacity: 0.35;
+}
+.view-action.zoob-view-action.zoob-action--muted:hover {
+  opacity: 0.7;
+}
+
+/* Spinner for BibView loading state. */
+.zoob-view__message--loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+}
+.zoob-spinner {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+}
+.zoob-spinner__ring {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--background-modifier-border);
+  border-top-color: var(--interactive-accent);
+  border-radius: 50%;
+  animation: zoob-spin 900ms linear infinite;
+}
+@keyframes zoob-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Partial-miss warning shown above the bibliography list. */
+.zoob-view__missing {
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+.zoob-view__missing-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-warning, var(--color-orange, var(--text-muted)));
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+.zoob-view__missing-icon .svg-icon {
+  width: 14px;
+  height: 14px;
+}
+.zoob-view__missing-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.zoob-view__missing-list code {
+  font-size: 0.88em;
+}

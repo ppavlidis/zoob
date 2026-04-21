@@ -1,0 +1,10 @@
+{
+  "id": "zoob",
+  "name": "zoob",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Zotero bibliography inside Obsidian — rich side panel, hover previews on [@citekeys], live CSL-formatted reference blocks. Talks to Zotero via Better BibTeX.",
+  "author": "ppavlidis",
+  "authorUrl": "https://github.com/ppavlidis",
+  "isDesktopOnly": true
+}

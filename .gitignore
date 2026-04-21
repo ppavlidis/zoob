@@ -1,0 +1,16 @@
+/tmp
+/out-tsc
+
+/node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+/.pnp
+.pnp.js
+
+.vscode/*
+.idea/
+.DS_Store
+
+# Local dev deploy target (absolute path to a vault's plugins/zoob/ dir).
+.deploy-path
