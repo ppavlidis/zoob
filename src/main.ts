@@ -26,6 +26,7 @@ import { readBibPath } from "./util/frontmatter";
 import { zoteroSelectByKey } from "./util/zoteroLinks";
 import { tagsOf, venueOf, yearOf } from "./util/format";
 import { s2 } from "./util/s2";
+import { t, plural, setLang } from "./i18n";
 
 export default class ZoobPlugin extends Plugin {
   settings!: ZoobSettings;
@@ -40,6 +41,11 @@ export default class ZoobPlugin extends Plugin {
 
   async onload(): Promise<void> {
     await this.loadSettings();
+    // Set the UI language before we register any command names, ribbon icons,
+    // or views — Obsidian caches most of those at registration time and won't
+    // re-read them later, so the very first translation call has to happen
+    // here.
+    setLang(this.settings.language);
     this.bbt = new BBTClient({ endpoint: this.settings.bbtEndpoint });
     this.cache = new ItemCache(this.settings.cacheTtlMs);
     // Load the persisted item cache before the first view refresh so warm
@@ -71,7 +77,7 @@ export default class ZoobPlugin extends Plugin {
     // doesn't have to repeat the click every time they open a new note.
     // Obsidian persists the panel leaf across sessions, so once opened it
     // stays open until the user deliberately closes it.
-    this.addRibbonIcon("book-marked", "zoob: references", () => {
+    this.addRibbonIcon("book-marked", t("ribbon.tooltip"), () => {
       void this.activateView();
     });
 
@@ -93,7 +99,7 @@ export default class ZoobPlugin extends Plugin {
       this.app.workspace.on("editor-menu", (menu, editor) => {
         menu.addItem((item) => {
           item
-            .setTitle("Insert citation from Zotero…")
+            .setTitle(t("menu.insertFromZotero"))
             .setIcon("quote")
             .onClick(() => void this.insertCitationViaZoteroPicker(editor));
         });
@@ -103,12 +109,12 @@ export default class ZoobPlugin extends Plugin {
     // Commands.
     this.addCommand({
       id: "open-references-panel",
-      name: "Open references panel",
+      name: t("cmd.openPanel"),
       callback: () => void this.activateView(),
     });
     this.addCommand({
       id: "insert-citation",
-      name: "Insert citation",
+      name: t("cmd.insertCitation"),
       editorCallback: (editor: Editor) => {
         // Insert `[@` and let the suggester take over.
         const cur = editor.getCursor();
@@ -118,12 +124,12 @@ export default class ZoobPlugin extends Plugin {
     });
     this.addCommand({
       id: "insert-citation-via-zotero-picker",
-      name: "Insert citation from Zotero (picker dialog)",
+      name: t("cmd.insertViaPicker"),
       editorCallback: (editor: Editor) => void this.insertCitationViaZoteroPicker(editor),
     });
     this.addCommand({
       id: "insert-refs-block",
-      name: "Insert references block",
+      name: t("cmd.insertRefsBlock"),
       editorCallback: (editor: Editor) => {
         const cur = editor.getCursor();
         editor.replaceRange("\n::: {#refs}\n:::\n", cur);
@@ -131,12 +137,12 @@ export default class ZoobPlugin extends Plugin {
     });
     this.addCommand({
       id: "refresh-current-note",
-      name: "Refresh Zotero data for current note",
+      name: t("cmd.refreshCurrent"),
       callback: () => void this.doRefreshPaths(undefined, { notify: true }),
     });
     this.addCommand({
       id: "refresh-all",
-      name: "Refresh Zotero data (entire cache)",
+      name: t("cmd.refreshAll"),
       callback: () => void this.doRefreshAll({ notify: true }),
     });
 
@@ -162,27 +168,27 @@ export default class ZoobPlugin extends Plugin {
       } else if (action === "open" || action === "open-panel") {
         void this.activateView();
       } else {
-        new Notice(`zoob: unknown action "${action}"`);
+        new Notice(t("notice.unknownAction", { action }));
       }
     });
     this.addCommand({
       id: "open-item-in-zotero",
-      name: "Open item in Zotero (citation under cursor)",
+      name: t("cmd.openInZotero"),
       editorCallback: (editor: Editor) => void this.openCiteUnderCursor(editor, "zotero"),
     });
     this.addCommand({
       id: "open-attachment",
-      name: "Open attachment (citation under cursor)",
+      name: t("cmd.openAttachment"),
       editorCallback: (editor: Editor) => void this.openCiteUnderCursor(editor, "pdf"),
     });
     this.addCommand({
       id: "insert-meta-block",
-      name: "Insert item metadata block (citation under cursor)",
+      name: t("cmd.insertMetaBlock"),
       editorCallback: (editor: Editor) => void this.insertMetaBlockAtCursor(editor),
     });
     this.addCommand({
       id: "copy-as-csl-json",
-      name: "Copy item as CSL-JSON (citation under cursor)",
+      name: t("cmd.copyCslJson"),
       editorCallback: (editor: Editor) => void this.copyCslJsonAtCursor(editor),
     });
 
@@ -358,7 +364,7 @@ export default class ZoobPlugin extends Plugin {
       }));
     } catch (e) {
       if (e instanceof BBTConnectionError) {
-        new Notice(`zoob suggest: ${e.message}`, 4000);
+        new Notice(t("notice.suggestError", { message: e.message }), 4000);
       }
       return [];
     }
@@ -390,7 +396,7 @@ export default class ZoobPlugin extends Plugin {
   insertCitationAtCursor(citekey: string): void {
     const view = this.resolveMdView();
     if (!view) {
-      new Notice("No active markdown editor.");
+      new Notice(t("notice.noEditor"));
       return;
     }
     view.editor.replaceSelection(`[@${citekey}]`);
@@ -405,13 +411,13 @@ export default class ZoobPlugin extends Plugin {
   async insertCitationViaZoteroPicker(editor?: Editor): Promise<void> {
     const target = editor ?? this.resolveMdView()?.editor;
     if (!target) {
-      new Notice("No active markdown editor.");
+      new Notice(t("notice.noEditor"));
       return;
     }
     // Remember the cursor now — by the time the user returns from Zotero,
     // focus may have moved and getCursor() would be wrong.
     const insertAt = target.getCursor();
-    const note = new Notice("Pick a reference in Zotero…", 0);
+    const note = new Notice(t("notice.pickInZotero"), 0);
     try {
       // Don't pass `minimize` and don't steal focus back — both caused worse
       // side effects (orphan bubble / Zotero main window getting minimized).
@@ -423,7 +429,7 @@ export default class ZoobPlugin extends Plugin {
       // Place cursor just after the inserted citation.
       target.setCursor({ line: insertAt.line, ch: insertAt.ch + text.length });
     } catch (e) {
-      new Notice(`Zotero picker failed: ${(e as Error).message}`, 5000);
+      new Notice(t("notice.pickerFailed", { message: (e as Error).message }), 5000);
     } finally {
       note.hide();
     }
@@ -456,12 +462,12 @@ export default class ZoobPlugin extends Plugin {
     try {
       const [item] = await this.getItems([citekey], { bibPath: this.currentBibPath() });
       if (!item?.zoteroKey) {
-        new Notice(`No Zotero link for @${citekey}`);
+        new Notice(t("notice.noZoteroLink", { citekey }));
         return;
       }
       window.open(zoteroSelectByKey(item.zoteroKey, item.libraryID), "_self");
     } catch (e) {
-      new Notice(`zoob: ${(e as Error).message}`);
+      new Notice(t("notice.genericError", { message: (e as Error).message }));
     }
   }
 
@@ -470,18 +476,18 @@ export default class ZoobPlugin extends Plugin {
     const lineText = editor.getLine(pos.line);
     const match = matchCitationAt(lineText, pos.ch);
     if (!match) {
-      new Notice("No citation under cursor.");
+      new Notice(t("notice.noCitationUnderCursor"));
       return;
     }
     const items = await this.getItems([match.citekey], { bibPath: this.currentBibPath() });
     const item = items[0];
     if (!item) {
-      new Notice(`No Zotero item for @${match.citekey}`);
+      new Notice(t("notice.noZoteroItem", { citekey: match.citekey }));
       return;
     }
     if (kind === "zotero") {
       if (!item.zoteroKey) {
-        new Notice("No Zotero item key available.");
+        new Notice(t("notice.noZoteroKey"));
         return;
       }
       window.open(zoteroSelectByKey(item.zoteroKey, item.libraryID), "_self");
@@ -491,7 +497,7 @@ export default class ZoobPlugin extends Plugin {
     const { primaryPdf } = await import("./util/zoteroLinks");
     const pdf = primaryPdf(item.attachments);
     if (!pdf) {
-      new Notice("No PDF attachment on this item.");
+      new Notice(t("notice.noPdf"));
       return;
     }
     const { openPdf } = await import("./view/ItemCard");
@@ -502,13 +508,13 @@ export default class ZoobPlugin extends Plugin {
     const pos = editor.getCursor();
     const match = matchCitationAt(editor.getLine(pos.line), pos.ch);
     if (!match) {
-      new Notice("Put the cursor on a [@citekey] first.");
+      new Notice(t("notice.putCursorOnCite"));
       return;
     }
     const items = await this.getItems([match.citekey], { bibPath: this.currentBibPath() });
     const item = items[0];
     if (!item) {
-      new Notice(`No Zotero item for @${match.citekey}`);
+      new Notice(t("notice.noZoteroItem", { citekey: match.citekey }));
       return;
     }
     const block = buildMetaBlock(item);
@@ -519,16 +525,16 @@ export default class ZoobPlugin extends Plugin {
     const pos = editor.getCursor();
     const match = matchCitationAt(editor.getLine(pos.line), pos.ch);
     if (!match) {
-      new Notice("Put the cursor on a [@citekey] first.");
+      new Notice(t("notice.putCursorOnCite"));
       return;
     }
     const items = await this.getItems([match.citekey], { bibPath: this.currentBibPath() });
     if (!items[0]) {
-      new Notice(`No Zotero item for @${match.citekey}`);
+      new Notice(t("notice.noZoteroItem", { citekey: match.citekey }));
       return;
     }
     await navigator.clipboard.writeText(JSON.stringify(items[0].csl, null, 2));
-    new Notice(`Copied CSL-JSON for @${match.citekey}`);
+    new Notice(t("notice.cslCopied", { citekey: match.citekey }));
   }
 
   // --- reading-mode hover handling ---
@@ -621,7 +627,7 @@ export default class ZoobPlugin extends Plugin {
       }
     }
     if (files.length === 0) {
-      if (opts.notify) new Notice("zoob: no matching note to refresh");
+      if (opts.notify) new Notice(t("notice.refreshNoFile"));
       return;
     }
     const citekeys = new Set<string>();
@@ -638,9 +644,11 @@ export default class ZoobPlugin extends Plugin {
     this.refreshBibView(true);
     this.refreshRefsBlocks();
     if (opts.notify) {
-      const label =
-        files.length === 1 ? files[0].basename : `${files.length} notes`;
-      new Notice(`zoob: refreshed ${citekeys.size} citekeys for ${label}`);
+      const label = files.length === 1
+        ? files[0].basename
+        : t("notice.refreshed.multiNote", { count: files.length });
+      const n = citekeys.size;
+      new Notice(t(plural(n, "notice.refreshed_one", "notice.refreshed_other"), { count: n, label }));
     }
   }
 
@@ -651,7 +659,7 @@ export default class ZoobPlugin extends Plugin {
     clearRefsBlockCache();
     this.refreshBibView(true);
     this.refreshRefsBlocks();
-    if (opts.notify) new Notice("zoob: full cache cleared");
+    if (opts.notify) new Notice(t("notice.cacheCleared"));
   }
 
   refreshBibView(force = false): void {

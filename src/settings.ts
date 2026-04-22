@@ -1,6 +1,7 @@
 import { App, PluginSettingTab, Setting, requestUrl } from "obsidian";
 import type ZoobPlugin from "./main";
 import { clearRefsBlockCache } from "./editor/RefsBlockPostProcessor";
+import { t, setLang, type LangSetting } from "./i18n";
 
 export type PdfOpenTarget = "zotero" | "system" | "obsidian";
 export type BibDensity = "compact" | "detailed";
@@ -38,6 +39,14 @@ export interface ZoobSettings {
    * badge — that path invalidates the entry regardless of TTL.
    */
   s2CacheTtlDays: number;
+  /**
+   * Interface language. "auto" reads navigator.language at load time; the
+   * three explicit values override. Panel, settings, notices, and commands
+   * all honor it. Command names cannot be re-keyed live — Obsidian reads
+   * them at addCommand() time — so a command-name change takes effect on
+   * the next plugin reload.
+   */
+  language: LangSetting;
 }
 
 export const DEFAULT_SETTINGS: ZoobSettings = {
@@ -55,6 +64,7 @@ export const DEFAULT_SETTINGS: ZoobSettings = {
   bibSortOrder: "document",
   showCitationCounts: false,
   s2CacheTtlDays: 30,
+  language: "auto",
 };
 
 export interface CslStyleOption {
@@ -96,15 +106,37 @@ export class ZoobSettingTab extends PluginSettingTab {
     containerEl.empty();
     containerEl.createEl("h2", { text: "zoob" });
     containerEl.createEl("p", {
-      text: "Zotero bibliography inside Obsidian via Better BibTeX. Zotero must be running with the Better BibTeX extension installed.",
+      text: t("settings.intro"),
       cls: "setting-item-description",
     });
 
+    // Language first — changing it re-renders this tab in-place so the user
+    // can see the effect without navigating away. Command names and the
+    // ribbon tooltip are read by Obsidian once per plugin load, so those
+    // pick up the change on the next reload; everything else is live.
     new Setting(containerEl)
-      .setName("Better BibTeX endpoint")
-      .setDesc("JSON-RPC URL. Leave as default unless you've remapped Zotero's port.")
-      .addText((t) =>
-        t
+      .setName(t("settings.language.name"))
+      .setDesc(t("settings.language.desc"))
+      .addDropdown((d) => {
+        d.addOption("auto", t("settings.language.auto"))
+          .addOption("en", "English")
+          .addOption("fr", "Français")
+          .addOption("es", "Español")
+          .setValue(this.plugin.settings.language)
+          .onChange(async (v) => {
+            this.plugin.settings.language = v as LangSetting;
+            setLang(this.plugin.settings.language);
+            await this.plugin.saveSettings();
+            this.plugin.rerenderBibView();
+            this.display();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName(t("settings.bbt.name"))
+      .setDesc(t("settings.bbt.desc"))
+      .addText((inp) =>
+        inp
           .setPlaceholder(DEFAULT_SETTINGS.bbtEndpoint)
           .setValue(this.plugin.settings.bbtEndpoint)
           .onChange(async (v) => {
@@ -116,8 +148,8 @@ export class ZoobSettingTab extends PluginSettingTab {
 
     // Test connection: runs a JSON-RPC probe and a plain GET, shows raw results.
     const testSetting = new Setting(containerEl)
-      .setName("Test connection")
-      .setDesc("Pings the BBT endpoint and a Zotero-local-API fallback. Useful for diagnosing panel errors.");
+      .setName(t("settings.test.name"))
+      .setDesc(t("settings.test.desc"));
     const testOut = containerEl.createEl("pre", { cls: "zoob-settings__test-output" });
     testOut.style.whiteSpace = "pre-wrap";
     testOut.style.fontSize = "var(--font-ui-smaller)";
@@ -127,9 +159,9 @@ export class ZoobSettingTab extends PluginSettingTab {
     testOut.style.marginBottom = "1.5em";
     testOut.style.display = "none";
     testSetting.addButton((b) =>
-      b.setButtonText("Run test").onClick(async () => {
+      b.setButtonText(t("settings.test.run")).onClick(async () => {
         testOut.style.display = "";
-        testOut.setText("Testing…");
+        testOut.setText(t("settings.test.running"));
         const lines: string[] = [];
         const endpoint = this.plugin.settings.bbtEndpoint;
         const zoteroBase = endpoint.replace(/\/better-bibtex\/json-rpc.*$/, "");
@@ -156,11 +188,11 @@ export class ZoobSettingTab extends PluginSettingTab {
           lines.push(`    body: ${truncate(r.text ?? "", 300)}`);
           p1Ok = r.status === 200 && (r.text ?? "").includes("\"result\"");
           lines.push(p1Ok
-            ? "    ✓ OK — zoob is wired up correctly."
-            : "    ✗ FAIL — Zotero or Better BibTeX isn't responding. Make sure Zotero is running and BBT is installed.");
+            ? `    ${t("settings.test.ok")}`
+            : `    ${t("settings.test.fail")}`);
         } catch (e) {
           lines.push(`    ERROR: ${(e as Error).message}`);
-          lines.push("    ✗ FAIL — couldn't reach the BBT endpoint.");
+          lines.push(`    ${t("settings.test.unreachable")}`);
         }
         lines.push("");
 
@@ -178,10 +210,10 @@ export class ZoobSettingTab extends PluginSettingTab {
           const body = await r.text();
           lines.push(`    status: ${r.status}`);
           lines.push(`    body: ${truncate(body, 300)}`);
-          lines.push("    ℹ Unusual: CORS is normally blocking. Not a problem.");
+          lines.push(`    ${t("settings.test.corsUnusual")}`);
         } catch (e) {
           lines.push(`    blocked: ${(e as Error).message}`);
-          lines.push("    ✓ Expected — zoob doesn't use native fetch.");
+          lines.push(`    ${t("settings.test.corsExpected")}`);
         }
         lines.push("");
 
@@ -196,27 +228,27 @@ export class ZoobSettingTab extends PluginSettingTab {
           lines.push(`    body: ${truncate(r.text ?? "", 200)}`);
           // A 404 with a "No endpoint found" style body is the expected normal.
           // Any HTTP status at all means the server is listening.
-          lines.push("    ✓ Zotero's local server is reachable (any HTTP status here means it's up).");
+          lines.push(`    ${t("settings.test.zoteroOk")}`);
         } catch (e) {
           lines.push(`    ERROR: ${(e as Error).message}`);
-          lines.push("    ✗ Zotero's local server isn't answering — is Zotero running?");
+          lines.push(`    ${t("settings.test.zoteroDown")}`);
         }
         lines.push("");
 
         // Net verdict — the only thing that matters for zoob's day-to-day.
         lines.push(p1Ok
-          ? "Overall: ✓ healthy. zoob will work. [2] and [3] are diagnostics, not failures."
-          : "Overall: ✗ not healthy. zoob needs [1] to pass. See the hint on that row.");
+          ? t("settings.test.verdictOk")
+          : t("settings.test.verdictFail"));
         testOut.setText(lines.join("\n"));
       }),
     );
 
     new Setting(containerEl)
-      .setName("Bibliography density")
-      .setDesc("Compact shows one-line rows. Detailed shows rich cards with abstract, tags, annotations, and full actions.")
+      .setName(t("settings.density.name"))
+      .setDesc(t("settings.density.desc"))
       .addDropdown((d) => {
-        d.addOption("compact", "Compact")
-          .addOption("detailed", "Detailed")
+        d.addOption("compact", t("settings.density.compact"))
+          .addOption("detailed", t("settings.density.detailed"))
           .setValue(this.plugin.settings.bibDensity)
           .onChange(async (v) => {
             this.plugin.settings.bibDensity = v as BibDensity;
@@ -226,11 +258,11 @@ export class ZoobSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("Bibliography sort order")
-      .setDesc("Order of entries in the side panel. Cite order follows first occurrence of each citekey in the note; author order sorts alphabetically by first author, then year.")
+      .setName(t("settings.sort.name"))
+      .setDesc(t("settings.sort.desc"))
       .addDropdown((d) => {
-        d.addOption("document", "Cite order in document")
-          .addOption("author", "Alphabetical by first author")
+        d.addOption("document", t("settings.sort.document"))
+          .addOption("author", t("settings.sort.author"))
           .setValue(this.plugin.settings.bibSortOrder)
           .onChange(async (v) => {
             this.plugin.settings.bibSortOrder = v as BibSortOrder;
@@ -240,14 +272,12 @@ export class ZoobSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("PDF open target")
-      .setDesc(
-        "Where the Open PDF button sends attachments. Alt-click on a card toggles to the non-default target.",
-      )
+      .setName(t("settings.pdf.name"))
+      .setDesc(t("settings.pdf.desc"))
       .addDropdown((d) => {
-        d.addOption("zotero", "Zotero reader (default)")
-          .addOption("system", "System default app")
-          .addOption("obsidian", "Obsidian tab (only if file is in the vault)")
+        d.addOption("zotero", t("settings.pdf.zotero"))
+          .addOption("system", t("settings.pdf.system"))
+          .addOption("obsidian", t("settings.pdf.obsidian"))
           .setValue(this.plugin.settings.pdfOpenTarget)
           .onChange(async (v) => {
             this.plugin.settings.pdfOpenTarget = v as PdfOpenTarget;
@@ -256,8 +286,8 @@ export class ZoobSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("Citation style")
-      .setDesc("Style used for the references panel, hover card footer, and the ::: {#refs} block.")
+      .setName(t("settings.style.name"))
+      .setDesc(t("settings.style.desc"))
       .addDropdown((d) => {
         for (const s of CSL_STYLES) d.addOption(s.id, s.label);
         d.setValue(this.plugin.settings.cslStyleId).onChange(async (v) => {
@@ -271,13 +301,11 @@ export class ZoobSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("Custom CSL style ID")
-      .setDesc(
-        "Overrides the dropdown. Any style ID Zotero recognizes (e.g. http://www.zotero.org/styles/nature).",
-      )
-      .addText((t) =>
-        t
-          .setPlaceholder("leave blank to use the dropdown")
+      .setName(t("settings.styleCustom.name"))
+      .setDesc(t("settings.styleCustom.desc"))
+      .addText((inp) =>
+        inp
+          .setPlaceholder(t("settings.styleCustom.placeholder"))
           .setValue(this.plugin.settings.cslCustomId)
           .onChange(async (v) => {
             this.plugin.settings.cslCustomId = v.trim();
@@ -290,10 +318,8 @@ export class ZoobSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Compact long author lists")
-      .setDesc(
-        "When an item has more than this many authors, the bibliography entry shows only the first N, a “…”, and the last author (which is often the senior author). Set to 0 to disable.",
-      )
+      .setName(t("settings.authorCompact.name"))
+      .setDesc(t("settings.authorCompact.desc"))
       .addSlider((s) =>
         s
           .setLimits(0, 30, 1)
@@ -307,8 +333,8 @@ export class ZoobSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Authors to keep at the start")
-      .setDesc("When compacting, how many leading authors to show before the “…”.")
+      .setName(t("settings.authorKeep.name"))
+      .setDesc(t("settings.authorKeep.desc"))
       .addSlider((s) =>
         s
           .setLimits(1, 15, 1)
@@ -322,12 +348,10 @@ export class ZoobSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Show Semantic Scholar citation counts")
-      .setDesc(
-        "When on, hover cards show a \"Cited by N\" badge fetched from Semantic Scholar's free graph API. Off by default to be kind to their shared, rate-limited public endpoint.",
-      )
-      .addToggle((t) =>
-        t
+      .setName(t("settings.s2.name"))
+      .setDesc(t("settings.s2.desc"))
+      .addToggle((tog) =>
+        tog
           .setValue(this.plugin.settings.showCitationCounts)
           .onChange(async (v) => {
             this.plugin.settings.showCitationCounts = v;
@@ -341,11 +365,11 @@ export class ZoobSettingTab extends PluginSettingTab {
     // on a `?` badge still invalidates the entry, so the escape hatch is there
     // even at the "never" setting.
     const s2TtlSetting = new Setting(containerEl)
-      .setName("Refresh citation counts every");
+      .setName(t("settings.s2ttl.name"));
     const renderDesc = (days: number): string =>
       days === 0
-        ? "Never after the first successful check — keeps S2 traffic to a minimum. Click a `?` badge to force a retry on individual items."
-        : `${days} day${days === 1 ? "" : "s"} — a cached count is re-fetched from Semantic Scholar after this window expires.`;
+        ? t("settings.s2ttl.never")
+        : t(days === 1 ? "settings.s2ttl.desc_one" : "settings.s2ttl.desc_other", { days });
     s2TtlSetting.setDesc(renderDesc(this.plugin.settings.s2CacheTtlDays));
     s2TtlSetting.addSlider((s) =>
       s
@@ -360,8 +384,8 @@ export class ZoobSettingTab extends PluginSettingTab {
     );
 
     new Setting(containerEl)
-      .setName("Abstract preview length")
-      .setDesc("Characters of abstract shown in the hover card before truncating.")
+      .setName(t("settings.abstract.name"))
+      .setDesc(t("settings.abstract.desc"))
       .addSlider((s) =>
         s
           .setLimits(80, 600, 20)
@@ -374,8 +398,8 @@ export class ZoobSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Hover delay (ms)")
-      .setDesc("How long to wait before popping the citation hover card.")
+      .setName(t("settings.hoverDelay.name"))
+      .setDesc(t("settings.hoverDelay.desc"))
       .addSlider((s) =>
         s
           .setLimits(0, 800, 25)
@@ -388,8 +412,8 @@ export class ZoobSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Cache TTL (minutes)")
-      .setDesc("How long hydrated items live before re-fetching from Zotero.")
+      .setName(t("settings.cacheTtl.name"))
+      .setDesc(t("settings.cacheTtl.desc"))
       .addSlider((s) =>
         s
           .setLimits(1, 60, 1)

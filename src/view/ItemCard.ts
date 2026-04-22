@@ -7,6 +7,7 @@ import { s2, s2PaperUrl } from "../util/s2";
 import { compactAuthorsInHtml } from "../util/authorCompact";
 import { enhanceCslEntry } from "../util/bibEnhance";
 import { compactBibHtml } from "../util/compactBib";
+import { t, plural } from "../i18n";
 
 type Variant = "panel" | "hover";
 
@@ -42,8 +43,8 @@ export function renderBibRow(
   // in Zotero if there's no PDF, so the click always does *something* useful.
   // Clicks on inner <a> elements (DOI, URLs in the CSL output) are honored as
   // links and don't bubble here.
-  entry.title = pdf ? "Open full text" : "Open in Zotero";
-  makeButtonLike(entry, pdf ? "Open full text" : "Open in Zotero");
+  entry.title = pdf ? t("card.openFullText") : t("card.openInZotero");
+  makeButtonLike(entry, pdf ? t("card.openFullText") : t("card.openInZotero"));
   entry.addEventListener("click", (e) => {
     if ((e.target as HTMLElement).closest("a")) return;
     if (pdf) openPdf(plugin, item, pdf, e.altKey);
@@ -63,12 +64,12 @@ export function renderBibRow(
     text: `@${item.citekey}`,
     // Include the full citekey in the tooltip so truncated-with-ellipsis long
     // keys are still discoverable on hover (BBT can produce 60+ char keys).
-    attr: { title: `@${item.citekey} — click to copy [@${item.citekey}]` },
+    attr: { title: t("card.citekey.tooltip", { citekey: item.citekey }) },
   });
-  makeButtonLike(key, `Copy [@${item.citekey}]`);
+  makeButtonLike(key, t("card.citekey.ariaCopy", { citekey: item.citekey }));
   const copyCitekey = async () => {
     await navigator.clipboard.writeText(`[@${item.citekey}]`);
-    new Notice(`Copied [@${item.citekey}]`);
+    new Notice(t("notice.citekeyCopied", { citekey: item.citekey }));
   };
   key.addEventListener("click", async (e) => {
     e.stopPropagation();
@@ -85,10 +86,10 @@ export function renderBibRow(
   const pdfBtn = actions.createEl("button", {
     cls: "zoob-bibrow__icon",
     attr: {
-      "aria-label": pdf ? "Open PDF" : loading ? "Checking for PDF…" : "No PDF attachment",
+      "aria-label": pdf ? t("card.pdf.open") : loading ? t("card.pdf.checking") : t("card.pdf.none"),
       title: pdf
-        ? "Open PDF (Alt-click: opposite target)"
-        : loading ? "Checking for PDF…" : "No PDF attachment",
+        ? t("card.pdf.openAltHint")
+        : loading ? t("card.pdf.checking") : t("card.pdf.none"),
     },
   });
   setIcon(pdfBtn, "file-text");
@@ -104,7 +105,7 @@ export function renderBibRow(
 
   const insertBtn = actions.createEl("button", {
     cls: "zoob-bibrow__icon",
-    attr: { "aria-label": "Insert citation at cursor", title: "Insert citation at cursor" },
+    attr: { "aria-label": t("card.insertAtCursor"), title: t("card.insertAtCursor") },
   });
   setIcon(insertBtn, "at-sign");
   insertBtn.addEventListener("click", (e) => {
@@ -132,11 +133,11 @@ export function renderItemCard(
   const header = root.createDiv({ cls: "zoob-card__header" });
   void opts;
   const citechip = header.createEl("code", { cls: "zoob-card__citekey", text: `@${item.citekey}` });
-  citechip.title = "Click to copy citekey";
-  makeButtonLike(citechip, `Copy [@${item.citekey}]`);
+  citechip.title = t("card.citekey.copyTitle");
+  makeButtonLike(citechip, t("card.citekey.ariaCopy", { citekey: item.citekey }));
   const copyFromCard = async () => {
     await navigator.clipboard.writeText(`[@${item.citekey}]`);
-    new Notice(`Copied [@${item.citekey}]`);
+    new Notice(t("notice.citekeyCopied", { citekey: item.citekey }));
   };
   citechip.addEventListener("click", async (e) => {
     e.stopPropagation();
@@ -178,9 +179,9 @@ export function renderItemCard(
       openInZotero(plugin, item);
     });
   } else {
-    const titleEl = root.createDiv({ cls: "zoob-card__title", text: item.csl.title ?? "(untitled)" });
-    titleEl.title = "Click to open in Zotero";
-    makeButtonLike(titleEl, "Open in Zotero");
+    const titleEl = root.createDiv({ cls: "zoob-card__title", text: item.csl.title ?? t("card.untitled") });
+    titleEl.title = t("card.title.openInZotero");
+    makeButtonLike(titleEl, t("card.openInZotero"));
     titleEl.addEventListener("click", () => openInZotero(plugin, item));
     titleEl.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" && e.key !== " ") return;
@@ -200,7 +201,7 @@ export function renderItemCard(
     const box = root.createDiv({ cls: "zoob-card__summary" });
     const label = box.createSpan({ cls: "zoob-card__summary-label" });
     setIcon(label, "sparkles");
-    label.createSpan({ text: " AI summary" });
+    label.createSpan({ text: ` ${t("card.aiSummary")}` });
     box.createDiv({ cls: "zoob-card__summary-body", text: summary });
   }
 
@@ -239,11 +240,11 @@ export function renderItemCard(
         cls: "zoob-card__badge",
         attr: {
           href: zoteroSelectByKey(item.zoteroKey, item.libraryID),
-          title: "Open in Zotero",
+          title: t("card.openInZotero"),
         },
       });
       setIcon(zbtn, "arrow-up-right");
-      zbtn.createSpan({ text: " Zotero" });
+      zbtn.createSpan({ text: ` ${t("card.zoteroBadge")}` });
     }
     const pdf = primaryPdf(item.attachments);
     if (pdf) {
@@ -253,7 +254,7 @@ export function renderItemCard(
       const pdfHref = hoverPdfHref(plugin, item, pdf);
       const link = hoverRow.createEl("a", {
         cls: "zoob-card__badge",
-        text: "Open PDF",
+        text: t("card.pdf.open"),
         attr: pdfHref ? { href: pdfHref } : {},
       });
       link.addEventListener("click", (e) => {
@@ -316,13 +317,14 @@ export function renderItemCard(
     if (item.notes.length > 0) {
       const nb = actions.createSpan({ cls: "zoob-card__badge zoob-card__badge--note" });
       setIcon(nb, "sticky-note");
-      nb.createSpan({ text: ` ${item.notes.length} note${item.notes.length === 1 ? "" : "s"}` });
+      const nKey = plural(item.notes.length, "card.notes_one", "card.notes_other");
+      nb.createSpan({ text: ` ${t(nKey, { count: item.notes.length })}` });
     }
-    addActionButton(actions, "arrow-up-right", "Open in Zotero", () => openInZotero(plugin, item));
-    addActionButton(actions, "at-sign", "Insert citation at cursor", () => {
+    addActionButton(actions, "arrow-up-right", t("card.openInZotero"), () => openInZotero(plugin, item));
+    addActionButton(actions, "at-sign", t("card.insertAtCursor"), () => {
       plugin.insertCitationAtCursor(item.citekey);
     });
-    addActionButton(actions, "quote", "Copy formatted entry", async () => {
+    addActionButton(actions, "quote", t("card.copyFormatted"), async () => {
       try {
         const html = await plugin.bbt.bibliography(
           [item.citekey],
@@ -330,9 +332,9 @@ export function renderItemCard(
           item.libraryID,
         );
         await navigator.clipboard.writeText(htmlToPlainText(html));
-        new Notice("Copied formatted reference");
+        new Notice(t("notice.copiedFormatted"));
       } catch (e) {
-        new Notice(`Couldn't format: ${(e as Error).message}`);
+        new Notice(t("notice.couldNotFormat", { message: (e as Error).message }));
       }
     });
   }
@@ -377,13 +379,13 @@ function renderCollapsibleAbstract(parent: HTMLElement, abstract: string): void 
     text: truncate(abstract, 220),
   });
   if (abstract.length <= 220) return;
-  const toggle = wrap.createEl("button", { cls: "zoob-card__abstract-toggle", text: "show more" });
+  const toggle = wrap.createEl("button", { cls: "zoob-card__abstract-toggle", text: t("card.abstract.more") });
   let expanded = false;
   toggle.addEventListener("click", (e) => {
     e.stopPropagation();
     expanded = !expanded;
     preview.setText(expanded ? abstract : truncate(abstract, 220));
-    toggle.setText(expanded ? "show less" : "show more");
+    toggle.setText(expanded ? t("card.abstract.less") : t("card.abstract.more"));
   });
 }
 
@@ -404,7 +406,13 @@ function renderAttachmentBadge(
   const isLink = !path && typeof att.url === "string";
 
   const icon = isPdf ? "file-text" : isWeb ? "globe" : isLink ? "link" : "paperclip";
-  const label = isPdf ? "PDF" : isWeb ? "Snapshot" : isLink ? "Link" : (att.title ?? "Attachment");
+  const label = isPdf
+    ? t("card.attachment.pdf")
+    : isWeb
+      ? t("card.attachment.snapshot")
+      : isLink
+        ? t("card.attachment.link")
+        : (att.title ?? t("card.attachment.generic"));
 
   const el = parent.createEl("button", {
     cls: `zoob-card__badge zoob-card__badge--${isPdf ? "pdf" : isWeb ? "snapshot" : isLink ? "link" : "file"}`,
@@ -440,12 +448,26 @@ function hoverPdfHref(
 }
 
 function openInZotero(plugin: ZoobPlugin, item: ZoobItem): void {
-  const key = item.zoteroKey;
-  if (!key) {
-    new Notice("No Zotero item key available for this citation.");
+  if (item.zoteroKey) {
+    window.open(zoteroSelectByKey(item.zoteroKey, item.libraryID), "_self");
     return;
   }
-  window.open(zoteroSelectByKey(key, item.libraryID), "_self");
+  // The panel renders items at "meta" hydration first (fast path) and upgrades
+  // to "full" (which is when `zoteroKey` lands) in the background. If the user
+  // clicks during that window, fetch full hydration on-demand and open on
+  // resolve — in practice a sub-second BBT call — rather than falsely
+  // reporting "No Zotero item key available."
+  void plugin.upgradeItems([item]).then((full) => {
+    const upgraded = full[0];
+    const key = upgraded?.zoteroKey;
+    if (!key) {
+      new Notice(t("notice.noZoteroKeyForCite"));
+      return;
+    }
+    window.open(zoteroSelectByKey(key, upgraded.libraryID ?? item.libraryID), "_self");
+  }).catch(() => {
+    new Notice(t("notice.noZoteroKeyForCite"));
+  });
 }
 
 export function openPdf(
@@ -480,7 +502,7 @@ export function openPdf(
     // BBT didn't give us anything Zotero-linkable; warn instead of silently
     // falling through to the OS handler (Acrobat, etc.), which surprises the
     // user when the setting says "Zotero".
-    new Notice("This attachment has no Zotero key; opening with system default.");
+    new Notice(t("notice.attachmentNoKey"));
   }
   if (target === "obsidian") {
     // Obsidian can only display PDFs inside the vault. Attempt, fall back to system.
@@ -498,7 +520,7 @@ export function openPdf(
     } catch {
       /* fall through */
     }
-    new Notice("PDF is not inside the vault — opening with system default.");
+    new Notice(t("notice.pdfNotInVault"));
     openSystemPath(path);
     return;
   }
@@ -510,7 +532,7 @@ export function openPdf(
     window.open(zoteroOpenPdfByKey(attachmentKey, item.libraryID), "_self");
     return;
   }
-  new Notice("No way to open this attachment.");
+  new Notice(t("notice.cannotOpenAttachment"));
 }
 
 function openSystemPath(path: string): void {
@@ -551,39 +573,39 @@ function renderS2CitedBy(parent: HTMLElement, item: ZoobItem): void {
   const doi = typeof item.csl.DOI === "string" ? item.csl.DOI.trim() : "";
   const title = typeof item.csl.title === "string" ? item.csl.title.trim() : "";
   if (!doi && !title) {
-    const na = parent.createSpan({ cls: "zoob-card__badge zoob-card__badge--na", text: "Cited by: ?" });
-    na.title = "No DOI or title available";
+    const na = parent.createSpan({ cls: "zoob-card__badge zoob-card__badge--na", text: t("card.s2.na") });
+    na.title = t("card.s2.noLookup");
     return;
   }
   const a = parent.createEl("a", { cls: "zoob-card__badge zoob-card__badge--scholar" });
   setIcon(a, "quote");
-  const label = a.createSpan({ text: " Cited by: ?" });
+  const label = a.createSpan({ text: ` ${t("card.s2.na")}` });
   a.setAttr("target", "_blank");
   a.setAttr("rel", "noopener");
-  a.title = "Checking Semantic Scholar…";
+  a.title = t("card.s2.checking");
 
   // Run the lookup + paint result. Extracted so a click on a `?` badge can
   // re-run it after invalidating the cached miss. S2 caches negative results
   // for 24h to be a good citizen, but rate-limit blips shouldn't pin a `?`
   // for a day — let the user force a retry.
   const paint = (): void => {
-    a.title = "Checking Semantic Scholar…";
+    a.title = t("card.s2.checking");
     void s2.lookup(doi || undefined, title || undefined).then((paper) => {
       if (!paper) {
         a.removeClass("zoob-card__badge--scholar");
         a.addClass("zoob-card__badge--na");
         a.addClass("zoob-card__badge--retry");
-        label.setText(" Cited by: ?");
+        label.setText(` ${t("card.s2.na")}`);
         a.removeAttribute("href");
-        a.title = "Not found (click to retry — often a rate-limit blip)";
+        a.title = t("card.s2.notFound");
         return;
       }
       a.removeClass("zoob-card__badge--na");
       a.removeClass("zoob-card__badge--retry");
       a.addClass("zoob-card__badge--scholar");
-      label.setText(` Cited by ${paper.citationCount}`);
+      label.setText(` ${t("card.s2.citedBy", { count: paper.citationCount })}`);
       a.setAttr("href", s2PaperUrl(paper.paperId));
-      a.title = "Open on Semantic Scholar";
+      a.title = t("card.s2.openPage");
     });
   };
 
@@ -636,7 +658,8 @@ function renderAnnotations(parent: HTMLElement, plugin: ZoobPlugin, item: ZoobIt
   const wrap = parent.createDiv({ cls: "zoob-card__annotations" });
   const toggle = wrap.createEl("button", { cls: "zoob-card__annotations-toggle" });
   setIcon(toggle, "highlighter");
-  toggle.createSpan({ text: ` ${all.length} annotation${all.length === 1 ? "" : "s"} — drag to insert as quote` });
+  const annKey = plural(all.length, "card.annotations_one", "card.annotations_other");
+  toggle.createSpan({ text: ` ${t(annKey, { count: all.length })}` });
   const list = wrap.createDiv({ cls: "zoob-card__annotations-list" });
   list.style.display = "none";
 
@@ -697,7 +720,7 @@ function renderAnnotationRow(
   row.addEventListener("click", (ev) => {
     ev.stopPropagation();
     const inserted = plugin.insertTextAtCursor(quote);
-    if (!inserted) new Notice("Open a note to insert the quote.");
+    if (!inserted) new Notice(t("notice.openNoteForQuote"));
   });
 }
 

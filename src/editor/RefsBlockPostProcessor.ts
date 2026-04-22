@@ -1,6 +1,7 @@
 import { MarkdownPostProcessor, MarkdownPostProcessorContext } from "obsidian";
 import type ZoobPlugin from "../main";
 import { extractCitekeys } from "../util/citations";
+import { t } from "../i18n";
 
 // Reading-mode post-processor that replaces the Pandoc-style reference block:
 //
@@ -52,9 +53,9 @@ export function refsBlockPostProcessor(plugin: ZoobPlugin): MarkdownPostProcesso
 
     const container = document.createElement("div");
     container.addClass("zoob-refs");
-    const heading = container.createDiv({ cls: "zoob-refs__heading", text: "References" });
+    const heading = container.createDiv({ cls: "zoob-refs__heading", text: t("refs.heading") });
     const body = container.createDiv({ cls: "zoob-refs__body" });
-    body.setText("Loading references…");
+    body.setText(t("refs.loading"));
 
     // Replace the start fence with the container and remove rest.
     startEl.replaceWith(container);
@@ -73,8 +74,8 @@ export function refsBlockPostProcessor(plugin: ZoobPlugin): MarkdownPostProcesso
     }
     const keys = source ? extractCitekeys(source) : [];
     if (keys.length === 0) {
-      body.setText("No citations found in this note.");
-      heading.setText("References");
+      body.setText(t("refs.empty"));
+      heading.setText(t("refs.heading"));
       return;
     }
 
@@ -85,7 +86,7 @@ export function refsBlockPostProcessor(plugin: ZoobPlugin): MarkdownPostProcesso
       body.empty();
       const inner = body.createDiv({ cls: "zoob-refs__list" });
       inner.innerHTML = html;
-      heading.setText(`References (${keys.length})`);
+      heading.setText(t("refs.headingCount", { count: keys.length }));
     };
     if (cachedHtml != null) {
       render(cachedHtml);
@@ -97,7 +98,7 @@ export function refsBlockPostProcessor(plugin: ZoobPlugin): MarkdownPostProcesso
       render(html);
       void ctx;
     } catch (e) {
-      body.setText(`Couldn't format references: ${(e as Error).message}`);
+      body.setText(t("refs.error", { message: (e as Error).message }));
     }
   };
 }

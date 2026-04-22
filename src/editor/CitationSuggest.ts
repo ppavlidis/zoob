@@ -8,6 +8,7 @@ import {
   TFile,
 } from "obsidian";
 import type ZoobPlugin from "../main";
+import { t } from "../i18n";
 
 interface SuggestItem {
   citekey: string;
@@ -125,7 +126,7 @@ export class CitationSuggest extends EditorSuggest<SuggestItem> {
     const line1 = el.createDiv({ cls: "zoob-suggest__line1" });
     line1.createEl("code", { cls: "zoob-suggest__key", text: `@${item.citekey}` });
     if (item.year) line1.createSpan({ cls: "zoob-suggest__year", text: item.year });
-    const title = el.createDiv({ cls: "zoob-suggest__title", text: item.title || "(untitled)" });
+    const title = el.createDiv({ cls: "zoob-suggest__title", text: item.title || t("suggest.untitled") });
     if (item.author) el.createDiv({ cls: "zoob-suggest__author", text: item.author });
     void title;
   }
@@ -150,7 +151,7 @@ export class CitationSuggest extends EditorSuggest<SuggestItem> {
 function searchingPlaceholder(q: string): SuggestItem {
   return {
     citekey: SEARCHING_SENTINEL,
-    title: `⏳  Searching Zotero for “${q}”…`,
+    title: t("suggest.searching", { query: q }),
     author: "",
     year: "",
   };
@@ -160,7 +161,7 @@ function emptyPlaceholder(q: string): SuggestItem {
   return {
     // Reuse the sentinel so selectSuggestion ignores clicks/Enter on it.
     citekey: SEARCHING_SENTINEL,
-    title: `No results for “${q}”`,
+    title: t("suggest.empty", { query: q }),
     author: "",
     year: "",
   };

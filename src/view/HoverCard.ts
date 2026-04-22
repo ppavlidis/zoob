@@ -1,6 +1,7 @@
 import type ZoobPlugin from "../main";
 import type { ZoobItem } from "../bbt/types";
 import { renderItemCard } from "./ItemCard";
+import { t } from "../i18n";
 
 export class HoverCard {
   private el: HTMLDivElement | null = null;
@@ -73,11 +74,11 @@ export class HoverCard {
       const items = await this.plugin.getItems([citekey], { bibPath });
       item = items[0];
     } catch (e) {
-      this.renderError(`Couldn't reach Zotero: ${(e as Error).message}`, anchor);
+      this.renderError(t("hover.error.reach", { message: (e as Error).message }), anchor);
       return;
     }
     if (!item) {
-      this.renderError(`No Zotero item for @${citekey}`, anchor);
+      this.renderError(t("hover.error.noItem", { citekey }), anchor);
       return;
     }
     // The plugin may have unloaded during the await — bail out cleanly.

@@ -6,6 +6,7 @@ import { renderBibRow, renderItemCard } from "./ItemCard";
 import { extractCitekeys } from "../util/citations";
 import { readBibPath } from "../util/frontmatter";
 import { sortKeyByFirstAuthor, yearOf } from "../util/format";
+import { t, plural } from "../i18n";
 
 export const ZOOB_VIEW_TYPE = "zoob-bibliography";
 
@@ -47,7 +48,7 @@ export class BibView extends ItemView {
   }
 
   getDisplayText(): string {
-    return "Zoob references";
+    return t("view.displayText");
   }
 
   getIcon(): string {
@@ -60,13 +61,13 @@ export class BibView extends ItemView {
     root.empty();
 
     this.headerEl = root.createDiv({ cls: "zoob-view__header" });
-    const title = this.headerEl.createEl("div", { cls: "zoob-view__title", text: "References" });
+    const title = this.headerEl.createEl("div", { cls: "zoob-view__title", text: t("view.title") });
     title.createEl("span", { cls: "zoob-view__count" });
 
     const actions = this.headerEl.createDiv({ cls: "zoob-view__actions" });
     this.healthDot = actions.createEl("span", {
       cls: "zoob-view__health zoob-view__health--unknown",
-      attr: { title: "Checking Zotero connection…", "aria-label": "Checking Zotero connection…" },
+      attr: { title: t("view.health.checking"), "aria-label": t("view.health.checking") },
     });
     // Stay hidden until we know the real state — otherwise a `?` placeholder
     // lingers in idle / no-citations states that never hit a BBT round-trip.
@@ -79,7 +80,7 @@ export class BibView extends ItemView {
       // Icon + tooltip describe the action, not the current state.
       const next = this.plugin.settings.bibDensity === "compact" ? "detailed" : "compact";
       setIcon(densityBtn, next === "detailed" ? "layout-grid" : "list");
-      const tip = next === "detailed" ? "Switch to detailed view" : "Switch to compact view";
+      const tip = next === "detailed" ? t("view.density.toDetailed") : t("view.density.toCompact");
       densityBtn.setAttr("title", tip);
       densityBtn.setAttr("aria-label", tip);
     };
@@ -107,9 +108,7 @@ export class BibView extends ItemView {
       setIcon(sortBtn, "arrow-up-down");
       const isAuthor = this.plugin.settings.bibSortOrder === "author";
       sortBtn.toggleClass("zoob-view__icon-button--active", isAuthor);
-      const tip = isAuthor
-        ? "Sort: by first author (A–Z). Click for cite order."
-        : "Sort: cite order in document. Click for A–Z by first author.";
+      const tip = isAuthor ? t("view.sort.authorMode") : t("view.sort.docMode");
       sortBtn.setAttr("title", tip);
       sortBtn.setAttr("aria-label", tip);
     };
@@ -126,13 +125,13 @@ export class BibView extends ItemView {
 
     const filterBtn = actions.createEl("button", {
       cls: "zoob-view__icon-button",
-      attr: { "aria-label": "Filter", title: "Filter visible entries" },
+      attr: { "aria-label": t("view.filter.aria"), title: t("view.filter.tooltip") },
     });
     setIcon(filterBtn, "search");
 
     const refreshBtn = actions.createEl("button", {
       cls: "zoob-view__icon-button",
-      attr: { "aria-label": "Refresh", title: "Refresh from Zotero" },
+      attr: { "aria-label": t("view.refresh.aria"), title: t("view.refresh.tooltip") },
     });
     setIcon(refreshBtn, "refresh-cw");
     refreshBtn.addEventListener("click", () => void this.refresh({ force: true }));
@@ -145,11 +144,11 @@ export class BibView extends ItemView {
     this.filterRow.style.display = "none";
     this.filterInput = this.filterRow.createEl("input", {
       cls: "zoob-view__filter-input",
-      attr: { type: "search", placeholder: "Filter references…", spellcheck: "false" },
+      attr: { type: "search", placeholder: t("view.filter.placeholder"), spellcheck: "false" },
     });
     const clearBtn = this.filterRow.createEl("button", {
       cls: "zoob-view__filter-clear",
-      attr: { "aria-label": "Clear filter", title: "Clear filter" },
+      attr: { "aria-label": t("view.filter.clear"), title: t("view.filter.clear") },
     });
     setIcon(clearBtn, "x");
     clearBtn.addEventListener("click", () => {
@@ -244,7 +243,7 @@ export class BibView extends ItemView {
       this.infoEl.empty();
       const countEl = this.headerEl.querySelector(".zoob-view__count");
       if (countEl) countEl.setText("");
-      return this.setStatus("idle", "Open a note to see its references here.");
+      return this.setStatus("idle", t("view.state.idle"));
     }
 
     const source = await this.app.vault.cachedRead(file);
@@ -271,10 +270,7 @@ export class BibView extends ItemView {
     this.updateInfo(file, keys.length);
 
     if (keys.length === 0) {
-      return this.setStatus(
-        "empty",
-        "No citations in this note yet. Type `[@` to start.",
-      );
+      return this.setStatus("empty", t("view.state.empty"));
     }
 
     // Synchronous cache peek: if everything is already hydrated (at least to
@@ -340,8 +336,8 @@ export class BibView extends ItemView {
     const box = this.stateEl.createDiv({ cls: "zoob-view__message zoob-view__message--loading" });
     const spinner = box.createDiv({ cls: "zoob-spinner" });
     spinner.createDiv({ cls: "zoob-spinner__ring" });
-    const noun = count === 1 ? "citation" : "citations";
-    box.createSpan({ text: `Loading ${count} ${noun} from Zotero…` });
+    const key = plural(count, "view.state.loading_one", "view.state.loading_other");
+    box.createSpan({ text: t(key, { count }) });
   }
 
   private renderBbtError(message: string): void {
@@ -351,14 +347,14 @@ export class BibView extends ItemView {
     const box = this.stateEl.createDiv({
       cls: "zoob-view__message zoob-view__message--offline",
     });
-    box.createDiv({ cls: "zoob-view__error-title", text: "Zotero returned an error" });
+    box.createDiv({ cls: "zoob-view__error-title", text: t("view.error.bbtTitle") });
     box.createDiv({ cls: "zoob-view__error-detail", text: message });
     const hint = box.createDiv({ cls: "zoob-view__error-hint" });
-    hint.createSpan({ text: "Check that the citekeys in this note exist in the library named by the " });
+    hint.createSpan({ text: t("view.error.bbtHintPrefix") });
     hint.createEl("code", { text: "bib:" });
-    hint.createSpan({ text: " frontmatter." });
+    hint.createSpan({ text: t("view.error.bbtHintSuffix") });
     const actions = box.createDiv({ cls: "zoob-view__error-actions" });
-    const retry = actions.createEl("button", { cls: "zoob-view__error-button", text: "Try again" });
+    const retry = actions.createEl("button", { cls: "zoob-view__error-button", text: t("view.error.tryAgain") });
     retry.addEventListener("click", () => void this.refresh({ force: true }));
   }
 
@@ -369,21 +365,21 @@ export class BibView extends ItemView {
     const box = this.stateEl.createDiv({
       cls: "zoob-view__message zoob-view__message--offline",
     });
-    box.createDiv({ cls: "zoob-view__error-title", text: "Couldn't reach Zotero" });
+    box.createDiv({ cls: "zoob-view__error-title", text: t("view.error.offlineTitle") });
     box.createDiv({ cls: "zoob-view__error-detail", text: message });
     const hint = box.createDiv({ cls: "zoob-view__error-hint" });
-    hint.createSpan({ text: "Make sure Zotero is running with the " });
+    hint.createSpan({ text: t("view.error.offlinePrefix") });
     const a = hint.createEl("a", {
       text: "Better BibTeX",
       attr: { href: "https://retorque.re/zotero-better-bibtex/installation/" },
     });
     a.setAttr("target", "_blank");
     a.setAttr("rel", "noopener");
-    hint.createSpan({ text: " extension." });
+    hint.createSpan({ text: t("view.error.offlineSuffix") });
     const actions = box.createDiv({ cls: "zoob-view__error-actions" });
-    const retry = actions.createEl("button", { cls: "zoob-view__error-button", text: "Try again" });
+    const retry = actions.createEl("button", { cls: "zoob-view__error-button", text: t("view.error.tryAgain") });
     retry.addEventListener("click", () => void this.refresh({ force: true }));
-    const openZotero = actions.createEl("button", { cls: "zoob-view__error-button", text: "Open Zotero" });
+    const openZotero = actions.createEl("button", { cls: "zoob-view__error-button", text: t("view.error.openZotero") });
     openZotero.addEventListener("click", () => {
       window.open("zotero://select/library", "_self");
     });
@@ -423,8 +419,10 @@ export class BibView extends ItemView {
     this.healthDot.removeClass("zoob-view__health--bad");
     this.healthDot.addClass(ok ? "zoob-view__health--ok" : "zoob-view__health--bad");
     const label = ok
-      ? "Connected to Zotero"
-      : `Zotero unreachable${message ? ` — ${message}` : ""}`;
+      ? t("view.health.ok")
+      : message
+        ? t("view.health.badWithMsg", { message })
+        : t("view.health.bad");
     this.healthDot.setAttr("title", label);
     this.healthDot.setAttr("aria-label", label);
     setIcon(this.healthDot, ok ? "check-circle" : "alert-triangle");
@@ -444,7 +442,7 @@ export class BibView extends ItemView {
       const title = warn.createDiv({ cls: "zoob-view__missing-title" });
       setIcon(title.createSpan({ cls: "zoob-view__missing-icon" }), "alert-triangle");
       title.createSpan({
-        text: ` Not found in Zotero (${missing.length}) — check \`bib:\` frontmatter`,
+        text: t("view.missing.title", { count: missing.length }),
       });
       const list = warn.createDiv({ cls: "zoob-view__missing-list" });
       for (const k of missing) list.createEl("code", { text: `@${k}` });
@@ -463,7 +461,7 @@ export class BibView extends ItemView {
       : ordered;
     if (this.filterQuery && filtered.length === 0) {
       const empty = this.listEl.createDiv({ cls: "zoob-view__filter-empty" });
-      empty.setText(`No references match “${this.filterQuery}”.`);
+      empty.setText(t("view.filter.empty", { query: this.filterQuery }));
       return;
     }
     filtered.forEach((it, i) => {
