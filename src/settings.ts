@@ -4,6 +4,7 @@ import { clearRefsBlockCache } from "./editor/RefsBlockPostProcessor";
 
 export type PdfOpenTarget = "zotero" | "system" | "obsidian";
 export type BibDensity = "compact" | "detailed";
+export type BibSortOrder = "document" | "author";
 
 export interface ZoobSettings {
   bbtEndpoint: string;
@@ -20,6 +21,23 @@ export interface ZoobSettings {
   authorCompactKeepFirst: number;
   /** Side-panel layout: compact one-line rows, or detailed rich cards. */
   bibDensity: BibDensity;
+  /** Side-panel ordering: cite-order in the document, or alphabetical by first author. */
+  bibSortOrder: BibSortOrder;
+  /**
+   * Whether to show the "Cited by N" badge backed by Semantic Scholar. Off by
+   * default — S2's free graph API is a shared, rate-limited public good and
+   * zoob shouldn't hit it unless the user has opted in.
+   */
+  showCitationCounts: boolean;
+  /**
+   * How long a cached Semantic Scholar result stays fresh before the next
+   * lookup re-hits the API, in days. Special value 0 means "never refresh
+   * after the first successful check" (infinite TTL), which is kind to S2's
+   * shared endpoint for a user who rarely cares about exact count deltas.
+   * The user can still force a refresh per-item via click-to-retry on a `?`
+   * badge — that path invalidates the entry regardless of TTL.
+   */
+  s2CacheTtlDays: number;
 }
 
 export const DEFAULT_SETTINGS: ZoobSettings = {
@@ -34,6 +52,9 @@ export const DEFAULT_SETTINGS: ZoobSettings = {
   authorCompactThreshold: 10,
   authorCompactKeepFirst: 7,
   bibDensity: "compact",
+  bibSortOrder: "document",
+  showCitationCounts: false,
+  s2CacheTtlDays: 30,
 };
 
 export interface CslStyleOption {
@@ -114,8 +135,15 @@ export class ZoobSettingTab extends PluginSettingTab {
         const zoteroBase = endpoint.replace(/\/better-bibtex\/json-rpc.*$/, "");
         lines.push(`Endpoint: ${endpoint}`);
         lines.push("");
-        // 1) BBT JSON-RPC probe via Obsidian requestUrl.
+        // Each probe annotates its own verdict line so the user doesn't have
+        // to know that a native-fetch CORS failure and a "/" 404 are both the
+        // expected normal state when everything is healthy.
+
+        // 1) BBT JSON-RPC probe via Obsidian requestUrl. This is the only
+        //    probe zoob actually depends on; passing here means the plugin
+        //    will work.
         lines.push("[1] BBT JSON-RPC (requestUrl) → api.ready");
+        let p1Ok = false;
         try {
           const r = await requestUrl({
             url: endpoint,
@@ -126,12 +154,21 @@ export class ZoobSettingTab extends PluginSettingTab {
           });
           lines.push(`    status: ${r.status}`);
           lines.push(`    body: ${truncate(r.text ?? "", 300)}`);
+          p1Ok = r.status === 200 && (r.text ?? "").includes("\"result\"");
+          lines.push(p1Ok
+            ? "    ✓ OK — zoob is wired up correctly."
+            : "    ✗ FAIL — Zotero or Better BibTeX isn't responding. Make sure Zotero is running and BBT is installed.");
         } catch (e) {
           lines.push(`    ERROR: ${(e as Error).message}`);
+          lines.push("    ✗ FAIL — couldn't reach the BBT endpoint.");
         }
         lines.push("");
-        // 2) Same via native fetch (for comparison — should fail if CORS).
-        lines.push("[2] BBT JSON-RPC (native fetch) → user.groups");
+
+        // 2) Same via native fetch. Expected to fail with a CORS error when
+        //    Zotero's allow-list doesn't include Obsidian's renderer origin.
+        //    This is a diagnostic — zoob uses requestUrl precisely to bypass
+        //    it — not a failure mode.
+        lines.push("[2] BBT JSON-RPC (native fetch) → user.groups  [diagnostic — CORS is expected to block this]");
         try {
           const r = await fetch(endpoint, {
             method: "POST",
@@ -141,19 +178,35 @@ export class ZoobSettingTab extends PluginSettingTab {
           const body = await r.text();
           lines.push(`    status: ${r.status}`);
           lines.push(`    body: ${truncate(body, 300)}`);
+          lines.push("    ℹ Unusual: CORS is normally blocking. Not a problem.");
         } catch (e) {
-          lines.push(`    ERROR: ${(e as Error).message}`);
+          lines.push(`    blocked: ${(e as Error).message}`);
+          lines.push("    ✓ Expected — zoob doesn't use native fetch.");
         }
         lines.push("");
-        // 3) Zotero local server root — confirms Zotero itself is up even if BBT isn't.
-        lines.push(`[3] Zotero local server GET ${zoteroBase}/`);
+
+        // 3) Hit Zotero's local server root. A 404 "No endpoint found" is the
+        //    *healthy* response: Zotero is up and answering, it just doesn't
+        //    serve anything at /. Anything else (connection refused, DNS
+        //    failure) means Zotero itself isn't running.
+        lines.push(`[3] Zotero local server GET ${zoteroBase}/  [probe — any HTTP response means Zotero is running]`);
         try {
           const r = await requestUrl({ url: `${zoteroBase}/`, method: "GET", throw: false });
           lines.push(`    status: ${r.status}`);
           lines.push(`    body: ${truncate(r.text ?? "", 200)}`);
+          // A 404 with a "No endpoint found" style body is the expected normal.
+          // Any HTTP status at all means the server is listening.
+          lines.push("    ✓ Zotero's local server is reachable (any HTTP status here means it's up).");
         } catch (e) {
           lines.push(`    ERROR: ${(e as Error).message}`);
+          lines.push("    ✗ Zotero's local server isn't answering — is Zotero running?");
         }
+        lines.push("");
+
+        // Net verdict — the only thing that matters for zoob's day-to-day.
+        lines.push(p1Ok
+          ? "Overall: ✓ healthy. zoob will work. [2] and [3] are diagnostics, not failures."
+          : "Overall: ✗ not healthy. zoob needs [1] to pass. See the hint on that row.");
         testOut.setText(lines.join("\n"));
       }),
     );
@@ -167,6 +220,20 @@ export class ZoobSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.bibDensity)
           .onChange(async (v) => {
             this.plugin.settings.bibDensity = v as BibDensity;
+            await this.plugin.saveSettings();
+            this.plugin.rerenderBibView();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Bibliography sort order")
+      .setDesc("Order of entries in the side panel. Cite order follows first occurrence of each citekey in the note; author order sorts alphabetically by first author, then year.")
+      .addDropdown((d) => {
+        d.addOption("document", "Cite order in document")
+          .addOption("author", "Alphabetical by first author")
+          .setValue(this.plugin.settings.bibSortOrder)
+          .onChange(async (v) => {
+            this.plugin.settings.bibSortOrder = v as BibSortOrder;
             await this.plugin.saveSettings();
             this.plugin.rerenderBibView();
           });
@@ -253,6 +320,44 @@ export class ZoobSettingTab extends PluginSettingTab {
             this.plugin.rerenderBibView();
           }),
       );
+
+    new Setting(containerEl)
+      .setName("Show Semantic Scholar citation counts")
+      .setDesc(
+        "When on, hover cards show a \"Cited by N\" badge fetched from Semantic Scholar's free graph API. Off by default to be kind to their shared, rate-limited public endpoint.",
+      )
+      .addToggle((t) =>
+        t
+          .setValue(this.plugin.settings.showCitationCounts)
+          .onChange(async (v) => {
+            this.plugin.settings.showCitationCounts = v;
+            await this.plugin.saveSettings();
+            this.plugin.rerenderBibView();
+          }),
+      );
+
+    // Slider for the S2 cache freshness window. "Never refresh" (the 0 end of
+    // the slider) pins a successful count forever; the user's click-to-retry
+    // on a `?` badge still invalidates the entry, so the escape hatch is there
+    // even at the "never" setting.
+    const s2TtlSetting = new Setting(containerEl)
+      .setName("Refresh citation counts every");
+    const renderDesc = (days: number): string =>
+      days === 0
+        ? "Never after the first successful check — keeps S2 traffic to a minimum. Click a `?` badge to force a retry on individual items."
+        : `${days} day${days === 1 ? "" : "s"} — a cached count is re-fetched from Semantic Scholar after this window expires.`;
+    s2TtlSetting.setDesc(renderDesc(this.plugin.settings.s2CacheTtlDays));
+    s2TtlSetting.addSlider((s) =>
+      s
+        .setLimits(0, 365, 1)
+        .setDynamicTooltip()
+        .setValue(this.plugin.settings.s2CacheTtlDays)
+        .onChange(async (v) => {
+          this.plugin.settings.s2CacheTtlDays = v;
+          await this.plugin.saveSettings();
+          s2TtlSetting.setDesc(renderDesc(v));
+        }),
+    );
 
     new Setting(containerEl)
       .setName("Abstract preview length")

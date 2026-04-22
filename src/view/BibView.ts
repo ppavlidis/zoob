@@ -5,6 +5,7 @@ import { BBTConnectionError } from "../bbt/client";
 import { renderBibRow, renderItemCard } from "./ItemCard";
 import { extractCitekeys } from "../util/citations";
 import { readBibPath } from "../util/frontmatter";
+import { sortKeyByFirstAuthor, yearOf } from "../util/format";
 
 export const ZOOB_VIEW_TYPE = "zoob-bibliography";
 
@@ -17,6 +18,10 @@ export class BibView extends ItemView {
   private headerEl!: HTMLElement;
   private infoEl!: HTMLElement;
   private healthDot!: HTMLElement;
+  private filterRow!: HTMLElement;
+  private filterInput!: HTMLInputElement;
+  /** Current case-folded filter query (empty = no filter). */
+  private filterQuery = "";
   private currentFile: TFile | null = null;
   private lastKeys: string[] = [];
   /** Items last passed to render() — used to re-render instantly on density toggle. */
@@ -61,9 +66,11 @@ export class BibView extends ItemView {
     const actions = this.headerEl.createDiv({ cls: "zoob-view__actions" });
     this.healthDot = actions.createEl("span", {
       cls: "zoob-view__health zoob-view__health--unknown",
-      attr: { title: "Zotero connection status", "aria-label": "Zotero connection status" },
+      attr: { title: "Checking Zotero connection…", "aria-label": "Checking Zotero connection…" },
     });
-    setIcon(this.healthDot, "help-circle");
+    // Stay hidden until we know the real state — otherwise a `?` placeholder
+    // lingers in idle / no-citations states that never hit a BBT round-trip.
+    this.healthDot.style.display = "none";
 
     const densityBtn = actions.createEl("button", {
       cls: "zoob-view__icon-button",
@@ -89,12 +96,97 @@ export class BibView extends ItemView {
       void this.plugin.saveSettings();
     });
 
+    const sortBtn = actions.createEl("button", {
+      cls: "zoob-view__icon-button",
+    });
+    const updateSortButton = () => {
+      // A single reliable icon (`arrow-up-down`) — Obsidian's Lucide version
+      // doesn't always ship `arrow-down-a-z` or `list-ordered`. A "current
+      // mode" badge + tooltip carry the meaning instead. Bolded when in the
+      // non-default (author) mode to signal "you've overridden cite order".
+      setIcon(sortBtn, "arrow-up-down");
+      const isAuthor = this.plugin.settings.bibSortOrder === "author";
+      sortBtn.toggleClass("zoob-view__icon-button--active", isAuthor);
+      const tip = isAuthor
+        ? "Sort: by first author (A–Z). Click for cite order."
+        : "Sort: cite order in document. Click for A–Z by first author.";
+      sortBtn.setAttr("title", tip);
+      sortBtn.setAttr("aria-label", tip);
+    };
+    updateSortButton();
+    sortBtn.addEventListener("click", () => {
+      this.plugin.settings.bibSortOrder =
+        this.plugin.settings.bibSortOrder === "document" ? "author" : "document";
+      updateSortButton();
+      if (this.zoobState === "ready" && this.lastItems.length > 0) {
+        this.render(this.lastItems, this.lastKeys);
+      }
+      void this.plugin.saveSettings();
+    });
+
+    const filterBtn = actions.createEl("button", {
+      cls: "zoob-view__icon-button",
+      attr: { "aria-label": "Filter", title: "Filter visible entries" },
+    });
+    setIcon(filterBtn, "search");
+
     const refreshBtn = actions.createEl("button", {
       cls: "zoob-view__icon-button",
       attr: { "aria-label": "Refresh", title: "Refresh from Zotero" },
     });
     setIcon(refreshBtn, "refresh-cw");
     refreshBtn.addEventListener("click", () => void this.refresh({ force: true }));
+
+    // Filter row sits between the header and the info line. Hidden by default;
+    // revealed by the search button. Substring match across citekey, title,
+    // authors, year, and tags — case-insensitive, space-separated terms all
+    // must match (AND semantics), so "smith 2020" narrows sensibly.
+    this.filterRow = root.createDiv({ cls: "zoob-view__filter" });
+    this.filterRow.style.display = "none";
+    this.filterInput = this.filterRow.createEl("input", {
+      cls: "zoob-view__filter-input",
+      attr: { type: "search", placeholder: "Filter references…", spellcheck: "false" },
+    });
+    const clearBtn = this.filterRow.createEl("button", {
+      cls: "zoob-view__filter-clear",
+      attr: { "aria-label": "Clear filter", title: "Clear filter" },
+    });
+    setIcon(clearBtn, "x");
+    clearBtn.addEventListener("click", () => {
+      this.filterInput.value = "";
+      this.filterQuery = "";
+      this.filterInput.focus();
+      if (this.zoobState === "ready") this.render(this.lastItems, this.lastKeys);
+    });
+    this.filterInput.addEventListener("input", () => {
+      this.filterQuery = this.filterInput.value.trim().toLowerCase();
+      if (this.zoobState === "ready") this.render(this.lastItems, this.lastKeys);
+    });
+    this.filterInput.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        // Esc in an empty box = collapse; in a non-empty box = clear first.
+        if (this.filterInput.value) {
+          this.filterInput.value = "";
+          this.filterQuery = "";
+          if (this.zoobState === "ready") this.render(this.lastItems, this.lastKeys);
+        } else {
+          toggleFilter(false);
+        }
+      }
+    });
+    const toggleFilter = (show?: boolean) => {
+      const visible = show ?? this.filterRow.style.display === "none";
+      this.filterRow.style.display = visible ? "" : "none";
+      if (visible) {
+        this.filterInput.focus();
+        this.filterInput.select();
+      } else if (this.filterQuery) {
+        this.filterQuery = "";
+        this.filterInput.value = "";
+        if (this.zoobState === "ready") this.render(this.lastItems, this.lastKeys);
+      }
+    };
+    filterBtn.addEventListener("click", () => toggleFilter());
 
     this.infoEl = root.createDiv({ cls: "zoob-view__info" });
     this.stateEl = root.createDiv({ cls: "zoob-view__state" });
@@ -106,6 +198,14 @@ export class BibView extends ItemView {
     // No metadataCache.on("changed") listener — the plugin's vault.on("modify")
     // debounces a single refresh per save; doubling up here just re-triggers
     // the same work and re-starts an in-flight fetch.
+
+    // Kick off a lightweight BBT probe so the health dot reflects reality even
+    // when the active note has no citations (in which case refresh() never
+    // touches BBT and the dot would otherwise stay hidden / unresolved).
+    void this.plugin.bbt
+      .ready()
+      .then(() => this.setHealth(true))
+      .catch((e: unknown) => this.setHealth(false, (e as Error).message));
 
     await this.refresh();
   }
@@ -138,6 +238,12 @@ export class BibView extends ItemView {
       this.refreshToken++;
       this.currentFile = null;
       this.lastKeys = [];
+      this.lastItems = [];
+      // Clear the previous note's title/bib path and the count, otherwise
+      // they stick around while the state message says "Open a note…".
+      this.infoEl.empty();
+      const countEl = this.headerEl.querySelector(".zoob-view__count");
+      if (countEl) countEl.setText("");
       return this.setStatus("idle", "Open a note to see its references here.");
     }
 
@@ -310,6 +416,8 @@ export class BibView extends ItemView {
 
   private setHealth(ok: boolean, message?: string): void {
     if (!this.healthDot) return;
+    // Reveal the dot now that we have a real state.
+    this.healthDot.style.display = "";
     this.healthDot.removeClass("zoob-view__health--unknown");
     this.healthDot.removeClass("zoob-view__health--ok");
     this.healthDot.removeClass("zoob-view__health--bad");
@@ -343,7 +451,22 @@ export class BibView extends ItemView {
     }
     const density = this.plugin.settings.bibDensity;
     this.listEl.toggleClass("zoob-view__list--detailed", density === "detailed");
-    items.forEach((it, i) => {
+    // Apply user sort preference. `items` arrives in cite order; leave as-is
+    // for "document", sort a copy for "author" so cite order is preserved for
+    // other consumers of lastItems (e.g. cross-highlight on hover).
+    const ordered = this.plugin.settings.bibSortOrder === "author"
+      ? sortByFirstAuthor(items)
+      : items;
+    // Apply filter after sort so the visible order matches the sort choice.
+    const filtered = this.filterQuery
+      ? ordered.filter((it) => matchesFilter(it, this.filterQuery))
+      : ordered;
+    if (this.filterQuery && filtered.length === 0) {
+      const empty = this.listEl.createDiv({ cls: "zoob-view__filter-empty" });
+      empty.setText(`No references match “${this.filterQuery}”.`);
+      return;
+    }
+    filtered.forEach((it, i) => {
       if (density === "detailed") {
         renderItemCard(this.listEl, this.plugin, it, "panel", { index: i });
       } else {
@@ -382,4 +505,56 @@ function sameArray(a: string[], b: string[]): boolean {
 function cssEscape(v: string): string {
   // Tight selector: escape double-quotes and backslashes only (attr selector).
   return v.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/**
+ * Does this item match the current filter query? Builds a single searchable
+ * haystack from citekey, title, authors, year, and tags, case-folded. Terms
+ * are space-separated and combined with AND, so "smith 2020" narrows to
+ * papers that mention both. Empty query is handled by the caller.
+ */
+function matchesFilter(item: ZoobItem, queryLower: string): boolean {
+  const terms = queryLower.split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return true;
+  const parts: string[] = [item.citekey];
+  if (typeof item.csl.title === "string") parts.push(item.csl.title);
+  const creators = [...(item.csl.author ?? []), ...(item.csl.editor ?? [])];
+  for (const n of creators) {
+    if (n.family) parts.push(n.family);
+    if (n.given) parts.push(n.given);
+    if (n.literal) parts.push(n.literal);
+  }
+  // Year — pull from the same places yearOf looks.
+  const y = yearOf(item.csl);
+  if (y) parts.push(y);
+  const tags = Array.isArray(item.csl.keyword)
+    ? item.csl.keyword
+    : typeof item.csl.keyword === "string"
+      ? [item.csl.keyword]
+      : [];
+  for (const t of tags) parts.push(t);
+  const hay = parts.join(" \u0001 ").toLowerCase();
+  return terms.every((t) => hay.includes(t));
+}
+
+/**
+ * Non-mutating sort by first author → year → title. Uses a stable locale
+ * compare so mixed-case and diacritics behave sensibly ("Álvarez" vs
+ * "alvarez"). Year is parsed to a number; unknown years sort before known
+ * ones within the same author surname (since the year is just a tiebreaker).
+ */
+function sortByFirstAuthor(items: ZoobItem[]): ZoobItem[] {
+  const coll = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+  return items.slice().sort((a, b) => {
+    const ka = sortKeyByFirstAuthor(a.csl);
+    const kb = sortKeyByFirstAuthor(b.csl);
+    const byAuthor = coll.compare(ka, kb);
+    if (byAuthor !== 0) return byAuthor;
+    const ya = parseInt(yearOf(a.csl), 10);
+    const yb = parseInt(yearOf(b.csl), 10);
+    if (!Number.isNaN(ya) && !Number.isNaN(yb) && ya !== yb) return ya - yb;
+    const ta = typeof a.csl.title === "string" ? a.csl.title : "";
+    const tb = typeof b.csl.title === "string" ? b.csl.title : "";
+    return coll.compare(ta, tb);
+  });
 }

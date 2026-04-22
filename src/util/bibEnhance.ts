@@ -23,6 +23,19 @@ export function enhanceCslEntry(html: string, csl: CSLItem): string {
   const root = doc.getElementById("zoob-r");
   if (!root) return html;
 
+  // Strip the entry-number prefix that numbered CSL styles (AMA, Vancouver,
+  // IEEE, …) emit in `.csl-left-margin`. In a per-entry card view each entry
+  // is visually its own block — a leading "1." makes no sense. The refs block
+  // renderer uses its own code path and keeps numbering there.
+  root.querySelectorAll(".csl-left-margin").forEach((el) => el.remove());
+  // Some numbered styles leave `.csl-right-inline` with a hanging-indent left
+  // margin. Zero it out so the text starts at the card edge.
+  root.querySelectorAll(".csl-right-inline").forEach((el) => {
+    (el as HTMLElement).style.marginLeft = "0";
+    (el as HTMLElement).style.paddingLeft = "0";
+    (el as HTMLElement).style.display = "inline";
+  });
+
   const doi = typeof csl.DOI === "string" ? csl.DOI.trim() : "";
   const vol = csl.volume != null ? String(csl.volume).trim() : "";
   const issue = csl.issue != null ? String(csl.issue).trim() : "";
@@ -39,8 +52,18 @@ export function enhanceCslEntry(html: string, csl: CSLItem): string {
   // want to avoid duplicating what's already there.
   const doiInText = !!doi && norm.includes(doi.toLowerCase());
   const volInText = !!vol && new RegExp(`\\b${escapeRegex(vol)}\\b`).test(norm);
-  const issueInText = !!issue && new RegExp(`\\(${escapeRegex(issue)}\\)|no\\.?\\s*${escapeRegex(issue)}\\b`).test(norm);
+  const issueInTextInitial = !!issue && new RegExp(`\\(${escapeRegex(issue)}\\)|no\\.?\\s*${escapeRegex(issue)}\\b`).test(norm);
   const pagesInText = !!page && norm.includes(page.toLowerCase().replace(/\s+/g, " "));
+
+  // Pass 2: if the style emits the volume but not the issue (common with AMA
+  // rendered in a short form — "Cell 180, 568–584"), inject `(issue)` right
+  // after the volume so the citation reads as "Cell 180(3), 568–584" instead
+  // of trailing an orphan "(3)" on the tail.
+  let issueInjected = false;
+  if (issue && !issueInTextInitial && vol && volInText) {
+    issueInjected = injectAfterVolume(root, vol, issue);
+  }
+  const issueInText = issueInTextInitial || issueInjected;
 
   // Build the citation detail: "42(3):123–145" / "42:123–145" / "42(3)" / etc.
   const cite = buildCitation(vol, volInText, issue, issueInText, page, pagesInText);
@@ -67,6 +90,36 @@ export function enhanceCslEntry(html: string, csl: CSLItem): string {
   return root.innerHTML;
 }
 
+/**
+ * Walk text nodes under `root` and insert `(issue)` right after the first
+ * standalone occurrence of `vol` (word-boundary match, not already followed
+ * by `(` which would mean the issue is already there in some other form).
+ * Skips text inside existing `<a>` elements. Returns true on success.
+ */
+function injectAfterVolume(root: HTMLElement, vol: string, issue: string): boolean {
+  const re = new RegExp(`\\b${escapeRegex(vol)}\\b`);
+  const walker = (root.ownerDocument ?? document).createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let n = walker.nextNode();
+  while (n) {
+    const t = n as Text;
+    if (t.parentElement?.closest("a")) {
+      n = walker.nextNode();
+      continue;
+    }
+    const v = t.nodeValue ?? "";
+    const m = re.exec(v);
+    if (m) {
+      const idx = m.index + m[0].length;
+      // Don't double-insert if the next char already opens a paren.
+      if (v.charAt(idx) === "(") return false;
+      t.nodeValue = v.slice(0, idx) + `(${issue})` + v.slice(idx);
+      return true;
+    }
+    n = walker.nextNode();
+  }
+  return false;
+}
+
 function buildCitation(
   vol: string, volIn: boolean,
   issue: string, issueIn: boolean,
@@ -76,6 +129,10 @@ function buildCitation(
   const hasIssue = issue && !issueIn;
   const hasPage = page && !pageIn;
   if (!hasVol && !hasIssue && !hasPage) return "";
+  // Issue alone — "(3)" with nothing around it — is meaningless on the tail.
+  // Caller should have tried to inject it inline already; if that failed we
+  // simply drop it rather than append a confusing orphan parenthesis.
+  if (!hasVol && !hasPage && hasIssue) return "";
   let out = "";
   if (hasVol) out += vol;
   if (hasIssue) out += `(${issue})`;

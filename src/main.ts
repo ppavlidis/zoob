@@ -1,8 +1,6 @@
 import {
   Editor,
-  MarkdownFileInfo,
   MarkdownView,
-  Menu,
   Notice,
   Plugin,
   TFile,
@@ -27,6 +25,7 @@ import { matchCitationAt } from "./util/citations";
 import { readBibPath } from "./util/frontmatter";
 import { zoteroSelectByKey } from "./util/zoteroLinks";
 import { tagsOf, venueOf, yearOf } from "./util/format";
+import { s2 } from "./util/s2";
 
 export default class ZoobPlugin extends Plugin {
   settings!: ZoobSettings;
@@ -47,6 +46,11 @@ export default class ZoobPlugin extends Plugin {
     // citekeys don't trigger a BBT round-trip on startup.
     const cachePath = `${this.manifest.dir ?? ".obsidian/plugins/zoob"}/cache.json`;
     await this.cache.attachDisk(this.app, cachePath);
+    // Same disk-backing pattern for the Semantic Scholar "Cited by" cache — a
+    // 30-day TTL that persists across restarts keeps us off the rate-limiter.
+    const s2Path = `${this.manifest.dir ?? ".obsidian/plugins/zoob"}/s2-cache.json`;
+    s2.setTTL(this.settings.s2CacheTtlDays);
+    await s2.attachDisk(this.app, s2Path);
     this.hoverCard = new HoverCard(this);
 
     this.registerView(ZOOB_VIEW_TYPE, (leaf: WorkspaceLeaf) => new BibView(leaf, this));
@@ -62,45 +66,25 @@ export default class ZoobPlugin extends Plugin {
     this.registerDomEvent(document, "mouseover", (e) => this.handleReadingHoverIn(e));
     this.registerDomEvent(document, "mouseout", (e) => this.handleReadingHoverOut(e));
 
-    // File modifications DO NOT auto-refresh the bibliography panel. BBT
-    // round-trips are slow enough on large libraries that refetching every
-    // keystroke-save thrashes the UI; the user pulls via the refresh button,
-    // a command, or the obsidian://zoob?action=refresh URI when ready. We
-    // still poke the view-header action count here because that's a cheap
-    // local extract.
-    this.registerEvent(
-      this.app.vault.on("modify", (f) => {
-        if (!(f instanceof TFile)) return;
-        if (f !== this.app.workspace.getActiveFile()) return;
-        void this.updateActionState();
-      }),
-    );
+    // Ribbon icon: the user's one-click entry to the references panel. Kept
+    // always-visible instead of a per-markdown-view header action so the user
+    // doesn't have to repeat the click every time they open a new note.
+    // Obsidian persists the panel leaf across sessions, so once opened it
+    // stays open until the user deliberately closes it.
+    this.addRibbonIcon("book-marked", "zoob: references", () => {
+      void this.activateView();
+    });
 
     // No `editor-change` listener: that fires per keystroke and (even debounced)
-    // kicks the bibliography refresh — which hits BBT. vault.on("modify") above
-    // already covers in-app edits once Obsidian auto-saves, and terminal edits
-    // from outside, without punishing every keystroke.
-
-this.registerEvent(
+    // kicks the bibliography refresh — which hits BBT. The BibView listens for
+    // `active-leaf-change` itself and refreshes there, so we only need to track
+    // the last-focused markdown leaf for insertion-target bookkeeping.
+    this.registerEvent(
       this.app.workspace.on("active-leaf-change", (leaf) => {
         if (leaf && leaf.view instanceof MarkdownView) {
           this.lastMdLeaf = leaf;
-          this.installViewAction(leaf.view);
         }
-        // BibView listens for active-leaf-change itself and refreshes
-        // immediately; don't re-trigger via the debounced schedule here, or
-        // every tab switch fires two refreshes (one now, one 300 ms later).
-        void this.updateActionState();
       }),
-    );
-    this.registerEvent(
-      this.app.workspace.on("file-open", () => this.sweepInstallViewActions()),
-    );
-    // layout-change fires when tabs are opened, closed, or rearranged. This
-    // catches cases active-leaf-change misses — e.g. opening a new tab
-    // without making it active.
-    this.registerEvent(
-      this.app.workspace.on("layout-change", () => this.sweepInstallViewActions()),
     );
 
     // Right-click in the editor: offer the Zotero picker. Placed at the top
@@ -202,20 +186,14 @@ this.registerEvent(
       editorCallback: (editor: Editor) => void this.copyCslJsonAtCursor(editor),
     });
 
-    // Install the view-header action on any already-open markdown views.
-    this.app.workspace.onLayoutReady(() => {
-      this.sweepInstallViewActions();
-      void this.updateActionState();
-    });
   }
 
   onunload(): void {
     this.hoverCard.dispose();
-    // Sweep any view-header action buttons we installed.
-    document.querySelectorAll(".zoob-view-action").forEach((n) => n.remove());
     // Flush any pending cache write. Fire-and-forget: Obsidian won't wait on
     // an async onunload, but the adapter write is fast and typically completes.
     void this.cache.flush();
+    void s2.flush();
   }
 
   async loadSettings(): Promise<void> {
@@ -230,62 +208,9 @@ this.registerEvent(
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
-  }
-
-  /**
-   * Reflect whether the active note has citations on the view-header action —
-   * muted (greyed) when zero, highlighted with a count tooltip when non-zero.
-   * The action stays clickable regardless so the user can open the empty panel.
-   */
-  async updateActionState(): Promise<void> {
-    const file = this.app.workspace.getActiveFile();
-    let count = 0;
-    if (file) {
-      try {
-        const src = await this.app.vault.cachedRead(file);
-        const { extractCitekeys } = await import("./util/citations");
-        count = new Set(extractCitekeys(src)).size;
-      } catch {
-        count = 0;
-      }
-    }
-    const tip = !file
-      ? "zoob: no note open"
-      : count === 0
-        ? "zoob: no citations in this note"
-        : `zoob: ${count} citation${count === 1 ? "" : "s"}`;
-    document.querySelectorAll(".zoob-view-action").forEach((el) => {
-      (el as HTMLElement).toggleClass("zoob-action--muted", count === 0);
-      el.setAttribute("aria-label", tip);
-      el.setAttribute("title", tip);
-    });
-  }
-
-  /** Sweep all open markdown views and ensure each has the action button. */
-  private sweepInstallViewActions(): void {
-    this.app.workspace.iterateAllLeaves((leaf) => {
-      if (leaf.view instanceof MarkdownView) this.installViewAction(leaf.view);
-    });
-  }
-
-  /**
-   * Add a library action button to the top-right of a markdown view's
-   * header, next to "Properties" / Git / other plugins. Clicking it opens the
-   * references panel. Idempotent — verifies the DOM node still exists before
-   * considering the view "already installed" (Obsidian rebuilds the actions
-   * row on some transitions).
-   */
-  private installViewAction(view: MarkdownView): void {
-    const marker = "__zoobActionEl";
-    const v = view as unknown as Record<string, unknown>;
-    const prev = v[marker] as HTMLElement | undefined;
-    if (prev && prev.isConnected) return;
-    const el = view.addAction("quote", "zoob: references", () => {
-      void this.activateView();
-    });
-    el.addClass("zoob-view-action");
-    v[marker] = el;
-    void this.updateActionState();
+    // Keep the S2 client's TTL in sync so a slider change takes effect without
+    // reloading Obsidian. No-op if S2 display is disabled.
+    s2.setTTL(this.settings.s2CacheTtlDays);
   }
 
   effectiveCslId(): string {
@@ -669,7 +594,6 @@ this.registerEvent(
     this.refreshDebounce = window.setTimeout(() => {
       this.refreshDebounce = null;
       this.refreshBibView();
-      void this.updateActionState();
     }, 1200);
   }
 

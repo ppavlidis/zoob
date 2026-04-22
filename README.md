@@ -10,31 +10,9 @@ Modeled on [obsidian-deepsit](https://github.com/bassio/obsidian-deepsit) — sa
 - Zotero 7+ (works with 7, 8, 9) running
 - [Better BibTeX](https://retorque.re/zotero-better-bibtex/installation/) installed in Zotero
 
-## What you get
+## Getting started
 
-- **References panel** (right sidebar): cards for every item cited in the active note — title, authors, year, venue, tags, collapsible abstract, DOI/URL, attachment badges (PDF, snapshot, link), annotation counts, and one-click actions (open in Zotero, open PDF, copy citekey, insert citation, copy formatted entry).
-- **Hover previews** on `[@citekey]` in both edit and reading mode. Compact card with title, authors, abstract snippet, tags, and a PDF link. Works in Live Preview via a CodeMirror extension and in Reading mode via DOM delegation.
-- **Citation autocomplete** triggered by `[@` — searches your whole library (BBT `item.search`) and shows citekey, title, authors, year. Displays a "Searching Zotero…" placeholder while the call is in flight, so you see feedback on slow libraries instead of an empty popover.
-- **Zotero picker dialog** — the same native Cite-As-You-Write dialog Word and Google Docs use, with Zotero's full-library fuzzy search over title, authors, tags, etc. Reach it via:
-  - Right-click in the editor → **Insert citation from Zotero…**
-  - Command palette → **Insert citation from Zotero (picker dialog)**
-  - Any hotkey you bind (Settings → Hotkeys → search "zoob picker")
-
-  Useful when you know the title or author but not the citekey — the inline `[@` suggester is faster once you know roughly what you're after. Multi-select in the Zotero dialog inserts as `[@a; @b; @c]`.
-- **Live reference blocks.** Write `::: {#refs}` / `:::` (Pandoc syntax) in a note; in reading mode it renders as a CSL-formatted bibliography of the note's cited keys.
-- **Commands** (all in the command palette):
-  - Open references panel
-  - Insert citation
-  - Insert citation from Zotero (picker dialog)
-  - Insert references block
-  - Refresh Zotero data for current note
-  - Refresh Zotero data (entire cache)
-  - Open item in Zotero (citation under cursor)
-  - Open attachment (citation under cursor)
-  - Insert item metadata block (citation under cursor)
-  - Copy item as CSL-JSON (citation under cursor)
-
-## Conventions
+Open the references panel by clicking the <img src="images/zoob-icon.png" alt="zoob icon" width="16" valign="middle" /> **zoob: references** icon in Obsidian's left ribbon. 
 
 Add `bib:` to a note's frontmatter to scope suggestions and panel resolution to a Zotero collection (nested paths supported):
 
@@ -58,10 +36,103 @@ Render a bibliography with a fenced Pandoc div:
 :::
 ```
 
+## Features
+
+### References panel
+
+The right-sidebar panel lists every item cited in the active note. Two density modes, toggleable from the panel header:
+
+| Compact rows (default) | Detailed cards |
+| :---: | :---: |
+| ![Compact panel view — one-line rows](images/compact-view.png) | ![Detailed panel view — expanded cards](images/expanded-view.png) |
+
+Header controls (left → right):
+
+- **Density toggle** — compact one-line rows (default) vs. detailed rich cards.
+- **Sort toggle** — document (cite-order) vs. alphabetical by first author. Highlighted when A–Z is active so you can tell at a glance.
+- **Filter** — opens a substring search box; space-separated terms are AND-combined across citekey, title, authors, year, and tags. Esc clears or collapses.
+- **Refresh** — forces a re-fetch from Zotero.
+- A connection dot (green check / red triangle) that reflects live Better BibTeX health.
+
+Each detailed card shows title, authors, year, venue, tags, a collapsible abstract, DOI/URL, attachment badges (PDF, snapshot, link), annotation count, and one-click actions (open in Zotero, insert citation, copy formatted entry). If a Zotero child note starts with "AI summary", its text appears prominently on the card. If you've opted in to Semantic Scholar lookups (see *Citation counts* below), the hover card also shows a "Cited by N" badge.
+
+Drag any annotation from the panel onto the editor to paste it as a Markdown blockquote with an inline citation; click instead for cursor-position insertion.
+
+### Citation counts
+
+**Off by default.** Turn on *Show Semantic Scholar citation counts* in settings to have hover cards show a `Cited by N` badge.
+
+The badge is backed by [Semantic Scholar's](https://api.semanticscholar.org/) free graph API — unauthenticated, shared ~100 req / 5 min pool, so don't abuse it. When the feature is on:
+
+- Each paper is looked up once by DOI (preferred) or title. Hits and misses are cached on disk in `s2-cache.json` under the plugin folder, so the cache survives Obsidian restarts.
+- The **refresh interval** is configurable via a slider in settings (default **30 days**). Slide it all the way to the left for "**never refresh after first check**" — the friendliest setting for S2's shared endpoint.
+- When a note with many references opens at once, some requests may get rate-limited and come back as `Cited by: ?`. That `?` badge is **click-to-retry** — clicking invalidates the cached miss for that paper and re-fires the lookup. This works at any TTL setting, including "never".
+- A `?` with no cursor change on hover means the item has no DOI or title for S2 to search with; there's nothing to retry.
+
+### Hover previews
+
+![Hover preview card popping up over an inline citation in the editor](images/in-line-view.png)
+
+Hover a `[@citekey]` in edit or reading mode for a compact card with title, authors, abstract snippet, tags, and a PDF link. Works in Live Preview via a CodeMirror extension and in Reading mode via DOM delegation. (If you've enabled *Show Semantic Scholar citation counts*, the card also includes a "Cited by" badge — see *Citation counts*.)
+
+### Citation autocomplete
+
+Type `[@` to trigger a suggester over your full library (BBT `item.search`). Results show citekey, title, authors, year. A "Searching Zotero…" placeholder fills the popover while the call is in flight, so slow libraries don't look broken.
+
+![Inline `[@` suggester popup showing citekey, title, authors, and year for matching items](images/cayw.png)
+
+### Zotero picker (Cite As You Write)
+
+Zotero ships a cross-application picker — the same floating search box that Word, LibreOffice, and Google Docs use via the official Zotero plugins. zoob exposes that picker inside Obsidian through Better BibTeX's `cayw` HTTP endpoint.
+
+**How it feels.** You trigger the picker and Zotero comes to the foreground with its red-bar CAYW bubble floating over the screen, with a live fuzzy search over every item in every library and group (title, author, year, tags, everything Zotero indexes — not just citekeys). Type, arrow-key to a result, hit Enter to add. Keep typing to add more. Hit Enter again on an empty box to confirm. Obsidian gets back a formatted citation like `[@smith2024transformer]` or `[@a2020; @b2021]` and drops it at your cursor. A **Zotero is waiting for your pick…** Notice floats in Obsidian until you finish, so the stall is legible rather than mysterious.
+
+**When to reach for it.** The inline `[@` suggester is faster once you remember part of the citekey; the picker wins when:
+
+- You know the title or author but not the citekey.
+- You want to insert several citations at once — multi-pick inserts as `[@a; @b; @c]`.
+- You're reaching across libraries or group libraries, not a single `bib:` collection.
+
+**How to trigger it.** Any of:
+
+- Right-click in the editor → **Insert citation from Zotero…**
+- Command palette → **Insert citation from Zotero (picker dialog)**
+- Hotkey (bind one in Settings → Hotkeys → search *zoob picker*)
+
+<img src="images/zotero-cayw.png" alt="Obsidian editor right-click menu showing the 'Insert citation from Zotero…' entry" width="220" />
+
+**Cancel & errors.** Esc inside the picker returns nothing and zoob no-ops — the cursor stays where it was. If Zotero isn't running or Better BibTeX is missing, you get a red Notice naming the problem instead of a silent no-op.
+
+### Live reference blocks
+
+Write `::: {#refs}` / `:::` (Pandoc syntax) in a note; in reading mode it renders as a CSL-formatted bibliography of the note's cited keys.
+
+### Commands
+
+All available in the command palette:
+
+- Open references panel
+- Insert citation
+- Insert citation from Zotero (picker dialog)
+- Insert references block
+- Refresh Zotero data for current note
+- Refresh Zotero data (entire cache)
+- Open item in Zotero (citation under cursor)
+- Open attachment (citation under cursor)
+- Insert item metadata block (citation under cursor)
+- Copy item as CSL-JSON (citation under cursor)
+
+### Keyboard accessibility
+
+All clickable elements in the panel (citekey chips, bibliography entries, titles, action buttons) are in the Tab order and respond to Enter/Space. A visible focus ring appears when you're navigating with the keyboard.
+
 ## Settings
 
 - **PDF open target**: Zotero reader (default), System default app, or Obsidian tab (only used when the PDF happens to be inside the vault). Alt-click on an "Open PDF" button flips to the non-default target.
-- **Citation style**: dropdown with AMA (default), APA 7, Chicago (author-date / notes), Vancouver, IEEE, MLA, Harvard — or paste any CSL style ID Zotero knows (`http://www.zotero.org/styles/...`).
+- **Citation style**: dropdown with AMA (default), APA 7, Chicago (author-date / notes), Vancouver, IEEE, MLA, Harvard, CSE name-year, PNAS, Genetics — or paste any CSL style ID Zotero knows (`http://www.zotero.org/styles/...`).
+- **Panel density**: compact rows or detailed cards (also toggleable from the panel header).
+- **Panel sort order**: document (cite order) or alphabetical by first author (also toggleable from the panel header).
+- **Author-list compaction**: long author lists are collapsed to "First, Second, Third, …, Last" past a configurable threshold.
 - **Abstract preview length**, **hover delay**, **cache TTL** — sliders in the settings tab.
 
 ## For Claude Code in Obsidian's embedded terminal
@@ -74,6 +145,7 @@ zoob treats the markdown file as the source of truth, so Claude Code working on 
 - Useful commands when you want Claude Code to "know" an item:
   - **Insert item metadata block** — writes a fenced ` ```zoob-meta ` block with the cited item's CSL-JSON right after the current paragraph. Claude Code can read it directly.
   - **Copy item as CSL-JSON** — same payload to the clipboard.
+
 ### Triggering a refresh from outside Obsidian
 
 When Claude Code (or any other local tool) edits a note's citations on disk, Obsidian's `modify` listener picks it up — but the entries already in zoob's on-disk cache are stale until their TTL expires. Invalidate them explicitly with the `obsidian://zoob` protocol handler:
@@ -128,13 +200,6 @@ To auto-deploy on every build, drop one line into `.deploy-path` in the repo roo
 ```
 
 (Or set `ZOOB_VAULT_PLUGIN_DIR` in the environment.) Each successful build copies the three artifacts there. Symlinks into a vault work inconsistently with Obsidian's plugin loader, so copying is the reliable default.
-
-## Out of scope (v1)
-
-- Per-item literature notes, templating engines, writing back to Zotero.
-- Zotero Web API / cloud sync.
-- Mobile (Better BibTeX is desktop only).
-- Custom in-Obsidian PDF viewer for files outside the vault.
 
 ## License
 
