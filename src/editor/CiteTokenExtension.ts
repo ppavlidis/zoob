@@ -9,7 +9,14 @@ import type ZoobPlugin from "../main";
 // the user sees in the editor is exactly what's on disk. The mark only adds a
 // CSS class so we can style and target it with DOM event delegation.
 
-const CITE_RE = /\[-?@([\w][\w:.#$%&\-+?<>~/]*)\]/g;
+// Pandoc citation syntax allows multi-cite groups like `[@a; @b, pp. 33]`, and
+// single cites with locators like `[@a p. 5]`. We can't require the citekey to
+// immediately precede `]` (that breaks multi-cites); instead we find bracket
+// groups that contain at least one `@key` and then decorate each `@key` span
+// inside. The inner pattern uses a lookbehind to require `[` or whitespace or
+// `;`/`,` before the `@` so stray `email@host` text doesn't get decorated.
+const CITE_GROUP_RE = /\[[^\]\n]*@[\w][\w:.#$%&\-+?<>~/]*[^\]\n]*\]/g;
+const CITEKEY_IN_GROUP_RE = /(?<=[\[\s;,])-?@([\w][\w:.#$%&\-+?<>~/]*)/g;
 
 export function citeTokenExtension(plugin: ZoobPlugin): Extension {
   return ViewPlugin.fromClass(
@@ -61,23 +68,41 @@ export function citeTokenExtension(plugin: ZoobPlugin): Extension {
 }
 
 function buildDecorations(view: EditorView): DecorationSet {
-  const b = new RangeSetBuilder<Decoration>();
+  // Collect (start, end, citekey) triples first, then add to the builder in
+  // ascending order — RangeSetBuilder rejects out-of-order ranges, and a
+  // two-pass regex (group, then keys-within-group) can emit them in either
+  // order depending on the text shape.
+  type Hit = { start: number; end: number; citekey: string };
+  const hits: Hit[] = [];
   for (const { from, to } of view.visibleRanges) {
     const text = view.state.doc.sliceString(from, to);
-    CITE_RE.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = CITE_RE.exec(text)) !== null) {
-      const start = from + m.index;
-      const end = start + m[0].length;
-      b.add(
-        start,
-        end,
-        Decoration.mark({
-          class: "zoob-cite",
-          attributes: { "data-citekey": m[1] },
-        }),
-      );
+    CITE_GROUP_RE.lastIndex = 0;
+    let gm: RegExpExecArray | null;
+    while ((gm = CITE_GROUP_RE.exec(text)) !== null) {
+      const groupStart = gm.index;
+      const groupText = gm[0];
+      CITEKEY_IN_GROUP_RE.lastIndex = 0;
+      let km: RegExpExecArray | null;
+      while ((km = CITEKEY_IN_GROUP_RE.exec(groupText)) !== null) {
+        // km.index points at the `@` (or `-@`); km[0] is the `@citekey`
+        // (possibly with a leading `-`) slice; km[1] is the bare citekey.
+        const tokStart = from + groupStart + km.index;
+        const tokEnd = tokStart + km[0].length;
+        hits.push({ start: tokStart, end: tokEnd, citekey: km[1] });
+      }
     }
+  }
+  hits.sort((a, b) => a.start - b.start || a.end - b.end);
+  const b = new RangeSetBuilder<Decoration>();
+  for (const h of hits) {
+    b.add(
+      h.start,
+      h.end,
+      Decoration.mark({
+        class: "zoob-cite",
+        attributes: { "data-citekey": h.citekey },
+      }),
+    );
   }
   return b.finish();
 }

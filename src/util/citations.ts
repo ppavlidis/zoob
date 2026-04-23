@@ -52,27 +52,39 @@ export function extractCitekeys(src: string): string[] {
   return ordered;
 }
 
-/** Match a single citation token at an arbitrary offset. */
+/**
+ * Match a single citation token at an arbitrary offset. Handles both simple
+ * `[@key]` and Pandoc multi-cite groups `[@a; @b, pp. 5]` — inside a group we
+ * return the specific `@citekey` span under (or nearest before) the offset,
+ * not just the first key in the group. Callers use start/end to position a
+ * popover, so returning the individual token makes the hover anchor correctly
+ * on whichever citekey the cursor is actually over.
+ */
 export function matchCitationAt(src: string, offset: number):
   | { start: number; end: number; citekey: string }
   | null {
-  // Scan back to find '[' preceding the cursor, then try to match from there.
-  let i = offset;
-  while (i > 0 && src[i - 1] !== "[") i--;
-  if (i === 0 || src[i - 1] !== "[") {
-    // Try a more permissive scan: look for the nearest [ within 128 chars.
-    const window = Math.max(0, offset - 128);
-    const back = src.lastIndexOf("[", offset);
-    if (back < window) return null;
-    i = back + 1;
+  // Find the enclosing `[ ... ]` bracket group that covers `offset`.
+  const openIdx = src.lastIndexOf("[", offset);
+  if (openIdx < 0) return null;
+  // Allow a small back-window — matchCitationAt is called with a text-node
+  // slice and the cursor might land on whitespace at the very start.
+  if (offset - openIdx > 512) return null;
+  const closeIdx = src.indexOf("]", openIdx);
+  if (closeIdx < 0 || closeIdx < offset - 1) return null;
+  const group = src.slice(openIdx, closeIdx + 1);
+  // Enumerate @citekey tokens inside the group. The lookbehind rules out
+  // accidental matches like `email@host` — we only decorate `@` preceded by
+  // `[`, whitespace, `;`, or `,`.
+  const re = /(?<=[\[\s;,])-?@([\w][\w:.#$%&\-+?<>~/]*)/g;
+  let bestBefore: { start: number; end: number; citekey: string } | null = null;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(group)) !== null) {
+    const start = openIdx + m.index;
+    const end = start + m[0].length;
+    if (offset >= start && offset <= end) {
+      return { start, end, citekey: m[1] };
+    }
+    if (start <= offset) bestBefore = { start, end, citekey: m[1] };
   }
-  const re = /^(-?@[\w][\w:.#$%&\-+?<>~/]*)(?:\s*[;,][^\]]*)?\]/;
-  const rest = src.slice(i);
-  const m = rest.match(re);
-  if (!m) return null;
-  const start = i - 1; // include the `[`
-  const end = start + m[0].length + 1; // +1 for `[`
-  const keyMatch = m[1].match(/-?@([\w][\w:.#$%&\-+?<>~/]*)/);
-  if (!keyMatch) return null;
-  return { start, end, citekey: keyMatch[1] };
+  return bestBefore;
 }
