@@ -408,6 +408,28 @@ export const STRINGS = {
     es: "déjalo en blanco para usar el menú",
   },
 
+  // -- Settings: inline citation rendering --------------------------------
+  "settings.inlineCites.name": {
+    en: "Render citations in reading mode",
+    fr: "Afficher les citations en mode lecture",
+    es: "Mostrar citas en modo lectura",
+  },
+  "settings.inlineCites.desc": {
+    en: "Show `[@key]` as `(Author et al., Year)` in reading mode. Live preview and source mode are unaffected.",
+    fr: "Affiche `[@clef]` comme `(Auteur et al., Année)` en mode lecture. L'aperçu en direct et le mode source ne sont pas modifiés.",
+    es: "Muestra `[@clave]` como `(Autor et al., Año)` en modo lectura. La vista previa en vivo y el modo fuente no se modifican.",
+  },
+  "inlineCite.missing": {
+    en: "unknown source",
+    fr: "source inconnue",
+    es: "fuente desconocida",
+  },
+  "inlineCite.noDate": {
+    en: "n.d.",
+    fr: "s.d.",
+    es: "s.f.",
+  },
+
   // -- Settings: author compaction ----------------------------------------
   "settings.authorCompact.name": {
     en: "Compact long author lists",

@@ -21,6 +21,7 @@ import { HoverCard } from "./view/HoverCard";
 import { CitationSuggest, SuggestItem } from "./editor/CitationSuggest";
 import { citeTokenExtension } from "./editor/CiteTokenExtension";
 import { clearRefsBlockCache, refsBlockPostProcessor } from "./editor/RefsBlockPostProcessor";
+import { citationPostProcessor } from "./editor/CitationPostProcessor";
 import { matchCitationAt } from "./util/citations";
 import { readBibPath } from "./util/frontmatter";
 import { zoteroSelectByKey } from "./util/zoteroLinks";
@@ -66,6 +67,7 @@ export default class ZoobPlugin extends Plugin {
     this.registerEditorSuggest(new CitationSuggest(this.app, this));
     this.registerEditorExtension(citeTokenExtension(this));
     this.registerMarkdownPostProcessor(refsBlockPostProcessor(this));
+    this.registerMarkdownPostProcessor(citationPostProcessor(this));
 
     // Reading-mode: hover on citations by DOM delegation, since the CM6
     // extension doesn't apply there.
@@ -542,12 +544,27 @@ export default class ZoobPlugin extends Plugin {
   private handleReadingHoverIn(e: MouseEvent): void {
     const t = e.target as HTMLElement | null;
     if (!t || !(t instanceof HTMLElement)) return;
-    // Reading mode renders `[@key]` as plain text inside a paragraph. We detect
-    // by regex over the mouseover'd text node's text, locating the key and its
-    // bounding client rect via a Range.
     const node = t;
     const reading = node.closest(".markdown-reading-view, .markdown-preview-view");
     if (!reading) return;
+
+    // Fast path: the inline-citation post-processor wraps each rendered key
+    // in `<span class="zoob-cite" data-citekey="...">`, so if the pointer is
+    // over one of those we can anchor directly on the span — no text-node
+    // scan, no regex. This covers both the post-processor output and any
+    // future reading-mode decoration that sets the same data attribute.
+    const citeEl = node.closest?.(".zoob-cite[data-citekey]") as HTMLElement | null;
+    if (citeEl) {
+      const key = citeEl.getAttribute("data-citekey") ?? "";
+      if (key) {
+        this.hoverCard.scheduleShow(key, citeEl);
+        return;
+      }
+    }
+
+    // Slow path: plain `[@key]` text (inline-citation rendering disabled, or
+    // a block skipped by the post-processor). Walk the text node under the
+    // pointer and match a Pandoc cite at the cursor offset.
     // Walk the text node containing the pointer position.
     const caret = document.caretPositionFromPoint?.(e.clientX, e.clientY)
       ?? (document as unknown as {

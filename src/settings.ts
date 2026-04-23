@@ -47,6 +47,13 @@ export interface ZoobSettings {
    * the next plugin reload.
    */
   language: LangSetting;
+  /**
+   * When on, reading mode renders `[@key]` as `(Author et al., Year)` instead
+   * of the raw markdown. Live preview / source mode are unaffected — citations
+   * stay as `[@key]` there so editing behaves normally. Multi-cite groups
+   * render as `(Smith, 2020; Jones, 2021)`; `[-@key]` suppresses the author.
+   */
+  renderInlineCitations: boolean;
 }
 
 export const DEFAULT_SETTINGS: ZoobSettings = {
@@ -65,6 +72,7 @@ export const DEFAULT_SETTINGS: ZoobSettings = {
   showCitationCounts: false,
   s2CacheTtlDays: 30,
   language: "auto",
+  renderInlineCitations: true,
 };
 
 export interface CslStyleOption {
@@ -313,6 +321,21 @@ export class ZoobSettingTab extends PluginSettingTab {
             this.plugin.cache.invalidate();
             clearRefsBlockCache();
             this.plugin.refreshBibView(true);
+            this.plugin.refreshRefsBlocks();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName(t("settings.inlineCites.name"))
+      .setDesc(t("settings.inlineCites.desc"))
+      .addToggle((tog) =>
+        tog
+          .setValue(this.plugin.settings.renderInlineCitations)
+          .onChange(async (v) => {
+            this.plugin.settings.renderInlineCitations = v;
+            await this.plugin.saveSettings();
+            // Reading views only re-run post-processors on re-render, so nudge
+            // the active preview so the change is visible immediately.
             this.plugin.refreshRefsBlocks();
           }),
       );

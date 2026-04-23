@@ -13,6 +13,19 @@
   background-color: var(--background-modifier-hover);
 }
 
+/* Reading-mode rendered citation: `[@key]` → `(Smith et al., 2020)`. Keep
+ * the wrapping punctuation (parens/brackets) un-decorated; only the individual
+ * citekey spans inside get the dashed underline via `.zoob-cite`. */
+.zoob-inline-cite {
+  /* No border/background of its own — styling is on the inner .zoob-cite spans. */
+}
+.zoob-inline-cite sup {
+  /* AMA / Chicago NB superscript rendering. */
+  line-height: 0;
+  font-size: 0.8em;
+  vertical-align: super;
+}
+
 /* ------------------------------ Bibliography view ------------------------------ */
 
 .zoob-view {

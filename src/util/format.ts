@@ -29,6 +29,25 @@ export function authorsShort(item: CSLItem): string {
   return `${names[0]} et al.`;
 }
 
+/**
+ * In-text author form for inline citations: family names only.
+ * 1 author → "Smith"
+ * 2 authors → "Smith & Jones"
+ * 3+ authors → "Smith et al."
+ * Falls back to `literal` (organizational authors like "WHO") and editors.
+ */
+export function authorsInText(item: CSLItem): string {
+  const list = item.author ?? item.editor ?? [];
+  const keys = list
+    .map((n) => n.family || n["non-dropping-particle"] || n.literal || "")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (keys.length === 0) return "";
+  if (keys.length === 1) return keys[0];
+  if (keys.length === 2) return `${keys[0]} & ${keys[1]}`;
+  return `${keys[0]} et al.`;
+}
+
 export function authorsLong(item: CSLItem, max = 6): string {
   const a = item.author ?? item.editor ?? [];
   const names = a.map(nameString).filter(Boolean);
