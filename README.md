@@ -10,6 +10,36 @@ Modeled on [obsidian-deepsit](https://github.com/bassio/obsidian-deepsit) — sa
 - Zotero 7+ (works with 7, 8, 9) running
 - [Better BibTeX](https://retorque.re/zotero-better-bibtex/installation/) installed in Zotero
 
+## Installation
+
+zoob isn't in Obsidian's Community Plugins catalog yet — submission is on the to-do list. Until then, install one of these two ways.
+
+### Manual install (from a release)
+
+1. Grab the three files from the [latest release](https://github.com/ppavlidis/zoob/releases/latest): `main.js`, `manifest.json`, `styles.css`.
+2. Create the folder `<your-vault>/.obsidian/plugins/zoob/` and drop the three files in.
+3. In Obsidian, **Settings → Community plugins**, turn off Restricted mode if it's on, then enable **zoob** in the *Installed plugins* list. (You may need to hit the refresh icon next to *Installed plugins* once.)
+
+### BRAT (auto-updating)
+
+If you have the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin (Beta Reviewers Auto-update Tool):
+
+1. *BRAT → Add Beta plugin* → paste `ppavlidis/zoob` → Add.
+2. Enable **zoob** in *Community plugins*.
+
+BRAT will pull updates whenever a new GitHub release is cut.
+
+### Build from source
+
+```bash
+git clone https://github.com/ppavlidis/zoob.git
+cd zoob
+npm install
+npm run build           # typecheck + production bundle
+```
+
+Then copy `main.js`, `manifest.json`, and `styles.css` into `<vault>/.obsidian/plugins/zoob/` and enable the plugin. See [Build & install](#build--install) below for the watch-mode workflow and auto-deploy.
+
 ## Getting started
 
 Open the references panel by clicking the <img src="images/zoob-icon.png" alt="zoob icon" width="16" valign="middle" /> **zoob: references** icon in Obsidian's left ribbon. 
@@ -183,6 +213,8 @@ Methods zoob uses (same surface is available to Claude Code): `api.ready`, `user
 BBT also exposes the Cite-As-You-Write picker as a plain HTTP endpoint — `GET /better-bibtex/cayw?format=pandoc&brackets=1`. The request hangs until the user picks in Zotero, then returns the formatted citation. BBT refuses requests with browser-like User-Agent headers (anti-CSRF) — send a non-browser UA like `curl/*` or a custom app name.
 
 ## Build & install
+
+For development. End users should follow [Installation](#installation) above.
 
 ```bash
 npm install
