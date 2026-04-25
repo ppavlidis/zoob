@@ -12,6 +12,9 @@ Modeled on [obsidian-deepsit](https://github.com/bassio/obsidian-deepsit) — sa
 
 ## Installation
 
+> [!IMPORTANT]
+> **Disable any other Zotero / citation plugin first.** zoob registers commands, hover handlers, the `[@` autocomplete, the `::: {#refs}` block renderer, and the `obsidian://` protocol handler under names that overlap with several existing Zotero/citation plugins (Citations, obsidian-deepsit, Pandoc Reference List, Zotlit, etc.). Running zoob alongside one of those produces double popups, racing notices, and stale data. Turn them off in **Settings → Community plugins** before enabling zoob.
+
 zoob isn't in Obsidian's Community Plugins catalog yet — submission is on the to-do list. Until then, install one of these two ways.
 
 ### Manual install (from a release)
