@@ -54,6 +54,14 @@ export interface ZoobSettings {
    * render as `(Smith, 2020; Jones, 2021)`; `[-@key]` suppresses the author.
    */
   renderInlineCitations: boolean;
+  /**
+   * When on, clicking `[@key]` (in editor or reading mode) scrolls the
+   * references panel to that item — only if the panel is already open;
+   * never auto-opens. Hover always shades the matching row regardless of
+   * this setting; this toggle just controls whether plain click *also*
+   * scrolls. Cmd/Ctrl-click still opens the item in Zotero.
+   */
+  clickCitationToReveal: boolean;
 }
 
 export const DEFAULT_SETTINGS: ZoobSettings = {
@@ -73,6 +81,7 @@ export const DEFAULT_SETTINGS: ZoobSettings = {
   s2CacheTtlDays: 30,
   language: "auto",
   renderInlineCitations: true,
+  clickCitationToReveal: false,
 };
 
 export interface CslStyleOption {
@@ -337,6 +346,18 @@ export class ZoobSettingTab extends PluginSettingTab {
             // Reading views only re-run post-processors on re-render, so nudge
             // the active preview so the change is visible immediately.
             this.plugin.refreshRefsBlocks();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName(t("settings.clickReveal.name"))
+      .setDesc(t("settings.clickReveal.desc"))
+      .addToggle((tog) =>
+        tog
+          .setValue(this.plugin.settings.clickCitationToReveal)
+          .onChange(async (v) => {
+            this.plugin.settings.clickCitationToReveal = v;
+            await this.plugin.saveSettings();
           }),
       );
 

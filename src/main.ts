@@ -73,6 +73,11 @@ export default class ZoobPlugin extends Plugin {
     // extension doesn't apply there.
     this.registerDomEvent(document, "mouseover", (e) => this.handleReadingHoverIn(e));
     this.registerDomEvent(document, "mouseout", (e) => this.handleReadingHoverOut(e));
+    // Reading-mode: click on a rendered citation reveals it in the panel.
+    // Only fires when the inline-citation post-processor (or any extension
+    // that sets `data-citekey`) has wrapped the text — plain `[@key]` text
+    // in reading mode has no element to click on.
+    this.registerDomEvent(document, "click", (e) => this.handleReadingClick(e));
 
     // Ribbon icon: the user's one-click entry to the references panel. Kept
     // always-visible instead of a per-markdown-view header action so the user
@@ -558,6 +563,7 @@ export default class ZoobPlugin extends Plugin {
       const key = citeEl.getAttribute("data-citekey") ?? "";
       if (key) {
         this.hoverCard.scheduleShow(key, citeEl);
+        this.linkPanelRow(key);
         return;
       }
     }
@@ -600,12 +606,42 @@ export default class ZoobPlugin extends Plugin {
     }
     const rect = anchor.getBoundingClientRect();
     this.hoverCard.scheduleShow(hit.citekey, rect);
+    this.linkPanelRow(hit.citekey);
   }
 
   private handleReadingHoverOut(e: MouseEvent): void {
     const related = e.relatedTarget as HTMLElement | null;
     if (related && related.closest(".zoob-hover")) return;
     this.hoverCard.scheduleHide();
+    this.linkPanelRow(null);
+  }
+
+  /**
+   * Reading-mode click delegation. Fires for any `.zoob-cite[data-citekey]`
+   * the inline-citation post-processor (or future extensions) emit. Mirrors
+   * the editor's CM6 click handler: modifier opens Zotero, plain click
+   * optionally scrolls the panel (gated by setting). We scope to elements
+   * actually inside a reading view so clicks on `.zoob-cite` elsewhere
+   * (e.g. inside the hover popover) don't accidentally fire reveals.
+   */
+  private handleReadingClick(e: MouseEvent): void {
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    const cite = target.closest?.(".zoob-cite[data-citekey]") as HTMLElement | null;
+    if (!cite) return;
+    const reading = cite.closest(".markdown-reading-view, .markdown-preview-view");
+    if (!reading) return;
+    const key = cite.getAttribute("data-citekey") ?? "";
+    if (!key) return;
+    if (e.metaKey || e.ctrlKey) {
+      e.preventDefault();
+      void this.openCitekeyInZotero(key);
+      return;
+    }
+    if (this.settings.clickCitationToReveal) {
+      e.preventDefault();
+      this.scrollPanelToCitekey(key);
+    }
   }
 
   // --- bib view refresh ---
@@ -691,6 +727,30 @@ export default class ZoobPlugin extends Plugin {
     const leaf = this.app.workspace.getLeavesOfType(ZOOB_VIEW_TYPE)[0];
     if (!leaf) return;
     (leaf.view as BibView).rerenderFromCache();
+  }
+
+  /**
+   * Apply (or clear, if `null`) the "linked row" shade in the panel — a
+   * subtle persistent highlight so the user can see which panel entry
+   * corresponds to a citation they're hovering in the note. Silently no-ops
+   * if the panel isn't open. Cheap, fires on every mouseover/mouseout.
+   */
+  linkPanelRow(citekey: string | null): void {
+    const leaf = this.app.workspace.getLeavesOfType(ZOOB_VIEW_TYPE)[0];
+    if (!leaf) return;
+    (leaf.view as BibView).setLinkedCitekey(citekey);
+  }
+
+  /**
+   * Smooth-scroll the panel to a citekey. Doesn't open the panel and
+   * doesn't apply any highlight on its own — the linked-row shade from
+   * `linkPanelRow` (set on hover, before the click) carries the visual cue.
+   * Silently no-ops if the panel is closed or the citekey isn't visible.
+   */
+  scrollPanelToCitekey(citekey: string): void {
+    const leaf = this.app.workspace.getLeavesOfType(ZOOB_VIEW_TYPE)[0];
+    if (!leaf) return;
+    (leaf.view as BibView).scrollToCitekey(citekey);
   }
 
   /** Force a reflow of any visible ::: {#refs} blocks. */

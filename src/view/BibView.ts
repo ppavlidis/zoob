@@ -263,6 +263,17 @@ export class BibView extends ItemView {
       return;
     }
 
+    // Filter is per-note, not panel-global: a query like "neuro" that's
+    // useful in one bibliography is almost certainly noise in the next note.
+    // Reset to empty whenever the active file changes — and stay reset on
+    // return, since after a navigation away the user's intent has shifted.
+    // Cleared *before* setting `currentFile` so this only fires on real
+    // navigations, not on duplicate refreshes for the same file.
+    if (file !== this.currentFile && this.filterQuery !== "") {
+      this.filterQuery = "";
+      this.filterInput.value = "";
+    }
+
     const token = ++this.refreshToken;
     this.currentFile = file;
     this.lastKeys = keys;
@@ -388,14 +399,31 @@ export class BibView extends ItemView {
   private updateInfo(file: TFile, count: number): void {
     this.infoEl.empty();
     const bib = readBibPath(this.app, file);
-    const fileLabel = this.infoEl.createSpan({ cls: "zoob-view__file", text: file.basename });
+
+    // File chip: which note's references we're showing. The basename can be
+    // long, so the chip ellipsis-truncates and exposes the full name in the
+    // tooltip.
+    const fileChip = this.infoEl.createSpan({
+      cls: "zoob-view__chip zoob-view__chip--file",
+      attr: { title: file.basename },
+    });
+    setIcon(fileChip.createSpan({ cls: "zoob-view__chip-icon" }), "file-text");
+    fileChip.createSpan({ cls: "zoob-view__chip-label", text: file.basename });
+
+    // Bib chip: the Zotero library/collection path from frontmatter. Only
+    // shown when the note has a bib: key — otherwise the chip would be empty
+    // and just take up space.
     if (bib) {
-      this.infoEl.createSpan({ cls: "zoob-view__sep", text: " · " });
-      this.infoEl.createSpan({ cls: "zoob-view__bib", text: bib });
+      const bibChip = this.infoEl.createSpan({
+        cls: "zoob-view__chip zoob-view__chip--bib",
+        attr: { title: bib },
+      });
+      setIcon(bibChip.createSpan({ cls: "zoob-view__chip-icon" }), "library-big");
+      bibChip.createSpan({ cls: "zoob-view__chip-label", text: bib });
     }
+
     const countEl = this.headerEl.querySelector(".zoob-view__count");
     if (countEl) countEl.setText(count > 0 ? ` (${count})` : "");
-    void fileLabel;
   }
 
   private setStatus(state: State, message?: string): void {
@@ -473,15 +501,46 @@ export class BibView extends ItemView {
     });
   }
 
-  /** Highlight a given citekey briefly — called when user hovers a cite token. */
-  flashCitekey(citekey: string): void {
-    const sel = `[data-citekey="${cssEscape(citekey)}"]`;
-    const el = this.listEl.querySelector<HTMLElement>(sel);
-    if (!el) return;
-    el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    el.classList.remove("zoob-bibrow--flash");
-    void el.offsetWidth;
-    el.classList.add("zoob-bibrow--flash");
+  /**
+   * Mark a citekey's row/card as "linked" — gets a subtle shade so the user
+   * can see which entry corresponds to the citation they're hovering in the
+   * note. `null` clears any current link. Idempotent and cheap; safe to
+   * call on every mouseover/mouseout. Returns true if a row matched.
+   */
+  setLinkedCitekey(citekey: string | null): boolean {
+    // Clear any previous link first. Doing this unconditionally keeps the
+    // class invariant simple — at most one row is "linked" at a time.
+    const prev = this.listEl.querySelectorAll<HTMLElement>(
+      ".zoob-bibrow--linked, .zoob-card--linked",
+    );
+    prev.forEach((p) => {
+      p.classList.remove("zoob-bibrow--linked");
+      p.classList.remove("zoob-card--linked");
+    });
+    if (!citekey) return false;
+    const el = this.listEl.querySelector<HTMLElement>(
+      `[data-citekey="${cssEscape(citekey)}"]`,
+    );
+    if (!el) return false;
+    el.classList.add(
+      el.classList.contains("zoob-card") ? "zoob-card--linked" : "zoob-bibrow--linked",
+    );
+    return true;
+  }
+
+  /**
+   * Scroll a citekey's row/card into view if it exists. No flash, no
+   * highlight — pairs with `setLinkedCitekey` which provides the visual cue.
+   * Returns true if found.
+   */
+  scrollToCitekey(citekey: string): boolean {
+    const el = this.listEl.querySelector<HTMLElement>(
+      `[data-citekey="${cssEscape(citekey)}"]`,
+    );
+    if (!el) return false;
+    // `block: "center"` keeps the row clear of the sticky header.
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    return true;
   }
 
   /**

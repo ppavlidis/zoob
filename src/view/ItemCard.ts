@@ -149,11 +149,16 @@ export function renderItemCard(
     e.stopPropagation();
     await copyFromCard();
   });
-  const year = yearOf(item.csl);
-  if (year) header.createSpan({ cls: "zoob-card__year", text: year });
+  // Type stays in the header (right-aligned via margin-left:auto). The year
+  // used to live here too, but a long citekey chip caused it to wrap onto a
+  // new line on some cards and not others — the placement looked random
+  // across the panel. The year is now its own row directly above the title,
+  // consistent on every card and noticeably more prominent.
   if (item.csl.type) {
     header.createSpan({ cls: "zoob-card__type", text: prettyType(String(item.csl.type)) });
   }
+  const year = yearOf(item.csl);
+  if (year) root.createDiv({ cls: "zoob-card__date", text: year });
 
   // Formatted CSL bibliography entry (preferred) or fall back to title/authors/venue.
   if (variant === "panel" && item.formattedHtml) {

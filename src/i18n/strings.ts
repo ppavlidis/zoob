@@ -429,6 +429,16 @@ export const STRINGS = {
     fr: "s.d.",
     es: "s.f.",
   },
+  "settings.clickReveal.name": {
+    en: "Click citation to scroll to it in references panel",
+    fr: "Cliquer sur une citation pour faire défiler le panneau jusqu'à elle",
+    es: "Haz clic en una cita para desplazar el panel hasta ella",
+  },
+  "settings.clickReveal.desc": {
+    en: "Plain click on `[@key]` scrolls the references panel to the matching row (only if the panel is already open). Hovering a citation always shades the matching row regardless of this setting. Cmd/Ctrl-click still opens the item in Zotero.",
+    fr: "Un clic simple sur `[@clef]` fait défiler le panneau des références jusqu'à la ligne correspondante (uniquement si le panneau est déjà ouvert). Le survol d'une citation met toujours en évidence la ligne correspondante, quel que soit ce réglage. Cmd/Ctrl-clic ouvre toujours l'élément dans Zotero.",
+    es: "Un clic simple en `[@clave]` desplaza el panel hasta la fila correspondiente (solo si el panel ya está abierto). Pasar el cursor sobre una cita siempre resalta la fila correspondiente, sin importar este ajuste. Cmd/Ctrl-clic sigue abriendo el ítem en Zotero.",
+  },
 
   // -- Settings: author compaction ----------------------------------------
   "settings.authorCompact.name": {

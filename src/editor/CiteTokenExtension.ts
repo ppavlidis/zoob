@@ -43,6 +43,9 @@ export function citeTokenExtension(plugin: ZoobPlugin): Extension {
           const key = cite.getAttr("data-citekey") ?? "";
           if (!key) return;
           plugin.hoverCard.scheduleShow(key, cite);
+          // Subtle persistent shade on the matching panel row, so the user
+          // can see at a glance which entry corresponds to this citation.
+          plugin.linkPanelRow(key);
         },
         mouseout(event: MouseEvent, _view: EditorView) {
           const t = event.target as HTMLElement | null;
@@ -50,16 +53,26 @@ export function citeTokenExtension(plugin: ZoobPlugin): Extension {
           const to = (event.relatedTarget as HTMLElement | null)?.closest?.(".zoob-cite, .zoob-hover");
           if (to) return;
           plugin.hoverCard.scheduleHide();
+          plugin.linkPanelRow(null);
         },
         click(event: MouseEvent, _view: EditorView) {
           const t = event.target as HTMLElement | null;
           const cite = t?.closest?.(".zoob-cite") as HTMLElement | null;
           if (!cite) return;
-          // Modifier-click: open in Zotero.
+          const key = cite.getAttr("data-citekey") ?? "";
+          if (!key) return;
+          // Modifier-click leaves Obsidian: open the item in Zotero.
           if (event.metaKey || event.ctrlKey) {
             event.preventDefault();
-            const key = cite.getAttr("data-citekey") ?? "";
             void plugin.openCitekeyInZotero(key);
+            return;
+          }
+          // Plain click optionally scrolls the panel to the row. No flash,
+          // no auto-open — the linked-row shade from hover is the cue. Off
+          // by default; users opt into the scroll if they want it.
+          if (plugin.settings.clickCitationToReveal) {
+            event.preventDefault();
+            plugin.scrollPanelToCitekey(key);
           }
         },
       },

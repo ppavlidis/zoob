@@ -120,13 +120,49 @@
   font-style: italic;
 }
 .zoob-view__info {
-  padding: 4px 12px;
-  color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  padding: 6px 12px 8px;
   display: flex;
   flex-wrap: wrap;
-  gap: 2px;
+  gap: 6px;
+  font-size: var(--font-ui-small);
+  align-items: center;
 }
+/* Each piece of context (active note, bib path) is its own pill so the two
+ * are visually distinct and the row scans cleanly even when the filename
+ * runs long. */
+.zoob-view__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px 2px 6px;
+  border-radius: 10px;
+  background: var(--background-modifier-border);
+  color: var(--text-normal);
+  max-width: 100%;
+  min-width: 0;
+}
+.zoob-view__chip-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.zoob-view__chip-icon .svg-icon {
+  width: 13px;
+  height: 13px;
+}
+.zoob-view__chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.zoob-view__chip--bib .zoob-view__chip-label {
+  font-family: var(--font-monospace);
+  font-size: 0.9em;
+  color: var(--text-muted);
+}
+/* Legacy class kept for any downstream consumer; new code uses chip styles. */
 .zoob-view__bib {
   font-family: var(--font-monospace);
 }
@@ -228,13 +264,12 @@
 .zoob-card--hover {
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
 }
-.zoob-card--flash {
-  animation: zoob-flash 900ms ease-out;
-}
-@keyframes zoob-flash {
-  0%   { background: var(--interactive-accent); color: var(--text-on-accent); }
-  40%  { background: var(--background-modifier-border-hover); }
-  100% { background: var(--background-secondary); }
+/* Persistent shade applied to the card whose citekey the user is hovering
+ * in the editor / reading view. No animation — it's an orientation cue, not
+ * a notification. */
+.zoob-card--linked {
+  background: var(--background-modifier-active-hover, var(--background-modifier-hover));
+  box-shadow: inset 3px 0 0 0 var(--interactive-accent);
 }
 
 .zoob-card__header {
@@ -253,8 +288,20 @@
   cursor: pointer;
 }
 .zoob-card__year {
+  /* Legacy class — kept for older renderers (e.g. hover card). The detailed
+   * card now uses .zoob-card__date for a prominent dedicated row. */
   color: var(--text-muted);
   font-size: var(--font-ui-small);
+}
+.zoob-card__date {
+  /* Prominent year, on its own row right above the title. Bold + accent so
+   * it acts as a visual anchor when scanning the panel. */
+  font-weight: 700;
+  font-size: var(--font-ui-medium);
+  color: var(--text-accent);
+  letter-spacing: 0.02em;
+  margin: 4px 0 2px;
+  line-height: 1.1;
 }
 .zoob-card__type {
   color: var(--text-muted);
@@ -541,6 +588,11 @@
 .zoob-hover .zoob-card__type {
   font-size: 0.78em;
 }
+.zoob-hover .zoob-card__date {
+  /* Slightly smaller in the popover but keep the bold/accent treatment. */
+  font-size: 0.95em;
+  margin: 2px 0;
+}
 .zoob-hover .zoob-card__title {
   font-size: 1.02em;
   line-height: 1.3;
@@ -784,8 +836,10 @@
   width: 14px;
   height: 14px;
 }
-.zoob-bibrow--flash {
-  animation: zoob-flash 900ms ease-out;
+/* Same persistent shade as .zoob-card--linked, scoped to compact rows. */
+.zoob-bibrow--linked {
+  background: var(--background-modifier-active-hover, var(--background-modifier-hover));
+  box-shadow: inset 3px 0 0 0 var(--interactive-accent);
 }
 
 /* Spinner for BibView loading state. */
