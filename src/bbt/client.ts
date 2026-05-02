@@ -79,6 +79,11 @@ export class BBTClient {
           headers: {
             "Content-Type": "application/json",
             Accept: "application/json",
+            // Zotero 9.x blocks requests that carry an Origin header unless the
+            // endpoint opts in or the client sends this header. Obsidian's
+            // requestUrl sends Origin: app://obsidian.md, so we need this to
+            // reach BBT's JSON-RPC endpoint.
+            "Zotero-Allowed-Request": "1",
           },
           body,
           throw: false,

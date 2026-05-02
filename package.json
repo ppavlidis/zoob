@@ -1,6 +1,6 @@
 {
   "name": "zoob",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Obsidian plugin for Zotero (w/ Better BibTeX): rich bibliography side panel, citation suggester, hover preview, live refs block.",
   "main": "main.js",
   "scripts": {
