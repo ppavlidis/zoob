@@ -270,6 +270,7 @@ export default class ZoobPlugin extends Plugin {
       let btn = this.commentButtons.get(view);
       if (!btn) {
         btn = view.addAction("message-square", t("action.hideComments"), () => void this.toggleComments());
+        btn.addClass("zoob-comment-action");
         this.commentButtons.set(view, btn);
       }
       btn.toggleClass("is-active", hidden);
@@ -291,6 +292,8 @@ export default class ZoobPlugin extends Plugin {
 
   onunload(): void {
     this.hoverCard.dispose();
+    // View header actions outlive the plugin; remove ours so a reload doesn't stack a second button.
+    document.querySelectorAll(".zoob-comment-action, .zoob-comment-popup").forEach((el) => el.remove());
     // Flush any pending cache write. Fire-and-forget: Obsidian won't wait on
     // an async onunload, but the adapter write is fast and typically completes.
     void this.cache.flush();
