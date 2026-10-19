@@ -6,7 +6,7 @@ import {
   TFile,
   WorkspaceLeaf,
 } from "obsidian";
-import { BBTClient, BBTConnectionError, resolveCollection } from "./bbt/client";
+import { BBTClient, BBTConnectionError, cslAuthor, cslYear, resolveCollection } from "./bbt/client";
 import { ItemCache } from "./bbt/cache";
 import type { ZoobItem } from "./bbt/types";
 import {
@@ -20,6 +20,7 @@ import { BibView, ZOOB_VIEW_TYPE } from "./view/BibView";
 import { HoverCard } from "./view/HoverCard";
 import { CitationSuggest, SuggestItem } from "./editor/CitationSuggest";
 import { citeTokenExtension } from "./editor/CiteTokenExtension";
+import { commentBubbleExtension, setHideComments } from "./editor/CommentBubbleExtension";
 import { clearRefsBlockCache, refsBlockPostProcessor } from "./editor/RefsBlockPostProcessor";
 import { citationPostProcessor } from "./editor/CitationPostProcessor";
 import { matchCitationAt } from "./util/citations";
@@ -28,6 +29,39 @@ import { zoteroSelectByKey } from "./util/zoteroLinks";
 import { tagsOf, venueOf, yearOf } from "./util/format";
 import { s2 } from "./util/s2";
 import { t, plural, setLang } from "./i18n";
+
+
+/** An indexed library item: the suggestion fields plus lowercase author surnames and title words. */
+type IndexedItem = SuggestItem & { hay: string; fam: string[]; words: string[] };
+
+/**
+ * Rank items for a free-text citation query such as "lee 2026", "lee atlas" or "merikangas".
+ * Every term must match something: a 1 to 4 digit number matches the year by prefix, a word matches
+ * (best first) the first author's surname, any author's surname, a title word, or the citekey, each
+ * by prefix. Ties sort by year, newest first.
+ */
+export function rankIndexed(items: IndexedItem[], query: string): IndexedItem[] {
+  const terms = query.toLowerCase().split(/[\s,;]+/).filter(Boolean);
+  if (terms.length === 0) return [];
+  const scored: Array<[number, IndexedItem]> = [];
+  for (const it of items) {
+    let total = 0;
+    let ok = true;
+    for (const term of terms) {
+      let sc = 0;
+      if (/^\d{1,4}$/.test(term) && it.year.startsWith(term)) sc = 4;
+      else if (it.fam[0]?.startsWith(term)) sc = 3;
+      else if (it.fam.some((f) => f.startsWith(term))) sc = 2;
+      else if (it.words.some((w) => w.startsWith(term))) sc = 1.5;
+      else if (it.citekey.toLowerCase().includes(term)) sc = 1;
+      if (sc === 0) { ok = false; break; }
+      total += sc;
+    }
+    if (ok) scored.push([total, it]);
+  }
+  scored.sort((a, b) => b[0] - a[0] || b[1].year.localeCompare(a[1].year));
+  return scored.slice(0, 25).map((x) => x[1]);
+}
 
 export default class ZoobPlugin extends Plugin {
   settings!: ZoobSettings;
@@ -66,6 +100,7 @@ export default class ZoobPlugin extends Plugin {
     // Editor integrations.
     this.registerEditorSuggest(new CitationSuggest(this.app, this));
     this.registerEditorExtension(citeTokenExtension(this));
+    this.registerEditorExtension(commentBubbleExtension(this));
     this.registerMarkdownPostProcessor(refsBlockPostProcessor(this));
     this.registerMarkdownPostProcessor(citationPostProcessor(this));
 
@@ -113,7 +148,30 @@ export default class ZoobPlugin extends Plugin {
       }),
     );
 
+    // Comment show/hide: a button in each markdown view's header bar.
+    this.app.workspace.onLayoutReady(() => this.syncCommentButtons());
+    this.registerEvent(this.app.workspace.on("layout-change", () => this.syncCommentButtons()));
+    this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.syncCommentButtons()));
+    this.registerEvent(this.app.workspace.on("file-open", () => this.syncCommentButtons()));
+    // Same toggle in the note's "More options" (…) menu.
+    this.registerEvent(
+      this.app.workspace.on("file-menu", (menu, _file, source) => {
+        if (source !== "more-options") return;
+        menu.addItem((item) =>
+          item
+            .setTitle(t(this.settings.hideComments ? "action.showComments" : "action.hideComments"))
+            .setIcon("message-square")
+            .onClick(() => void this.toggleComments()),
+        );
+      }),
+    );
+
     // Commands.
+    this.addCommand({
+      id: "toggle-comments",
+      name: t("cmd.toggleComments"),
+      callback: () => void this.toggleComments(),
+    });
     this.addCommand({
       id: "open-references-panel",
       name: t("cmd.openPanel"),
@@ -199,6 +257,36 @@ export default class ZoobPlugin extends Plugin {
       editorCallback: (editor: Editor) => void this.copyCslJsonAtCursor(editor),
     });
 
+  }
+
+  private commentButtons = new WeakMap<MarkdownView, HTMLElement>();
+
+  /** Add the comment toggle to any markdown view that lacks one, and refresh icons. */
+  private syncCommentButtons(): void {
+    const hidden = this.settings.hideComments;
+    for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+      const view = leaf.view;
+      if (!(view instanceof MarkdownView)) continue;
+      let btn = this.commentButtons.get(view);
+      if (!btn) {
+        btn = view.addAction("message-square", t("action.hideComments"), () => void this.toggleComments());
+        this.commentButtons.set(view, btn);
+      }
+      btn.toggleClass("is-active", hidden);
+      btn.setAttribute("aria-label", t(hidden ? "action.showComments" : "action.hideComments"));
+    }
+  }
+
+  async toggleComments(): Promise<void> {
+    this.settings.hideComments = !this.settings.hideComments;
+    await this.saveSettings();
+    this.app.workspace.iterateAllLeaves((leaf) => {
+      if (!(leaf.view instanceof MarkdownView)) return;
+      // `editor.cm` is the CM6 EditorView; not in the public typings.
+      const cm = (leaf.view.editor as unknown as { cm?: import("@codemirror/view").EditorView }).cm;
+      cm?.dispatch({ effects: setHideComments.of(this.settings.hideComments) });
+    });
+    this.syncCommentButtons();
   }
 
   onunload(): void {
@@ -336,25 +424,74 @@ export default class ZoobPlugin extends Plugin {
     }
   }
 
+  /** Per-scope suggestion index: every item of the note's `bib:` library or collection, in memory. */
+  private scopeIndex = new Map<string, { at: number; items: Promise<Array<IndexedItem>> }>();
+
   /**
-   * Suggest citations by querying the *whole* Zotero library via BBT
-   * `item.search`. Returns search-result fields directly — no CSL hydration —
-   * so the suggester stays snappy even on large libraries.
+   * Load (or reuse) the index for the note's `bib:` scope. Searching it locally takes microseconds;
+   * asking Zotero per keystroke took seconds and queued behind earlier searches. Refreshed after
+   * cacheTtlMs, serving the previous copy while the new one loads.
+   */
+  private async scopeItems(bibPath: string): Promise<Array<IndexedItem> | undefined> {
+    const libs = await this.bbt.libraries();
+    const found = resolveCollection(libs, bibPath);
+    if (!found) return undefined;
+    const key = `${found.library.id}/${found.collection?.key ?? ""}`;
+    const entry = this.scopeIndex.get(key);
+    if (entry && Date.now() - entry.at < this.settings.cacheTtlMs) return entry.items;
+    const load = this.bbt.exportScope(found.library, found.collection).then((csl) =>
+      csl.map((r) => {
+        const citekey = String(r["citation-key"] ?? r.id ?? "");
+        const author = cslAuthor(r.author) ?? "";
+        const year = cslYear(r.issued) ?? "";
+        const title = typeof r.title === "string" ? r.title : "";
+        const fam = (Array.isArray(r.author) ? r.author : []).map((a) => String(a.family ?? a.literal ?? "").toLowerCase()).filter(Boolean);
+        const words = title.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+        return { citekey, title, author, year, fam, words, hay: `${citekey} ${title} ${fam.join(" ")} ${year}`.toLowerCase() };
+      }).filter((x) => x.citekey),
+    );
+    const next = { at: Date.now(), items: load };
+    this.scopeIndex.set(key, next);
+    load.catch(() => { if (this.scopeIndex.get(key) === next) this.scopeIndex.delete(key); });
+    return entry ? entry.items : load;
+  }
+
+  /**
+   * Suggest citations. With a `bib:` scope, search its in-memory index (citekey, title, all
+   * authors, year); without one, fall back to a citekey search through BBT `item.search`.
    */
   async searchForSuggest(query: string): Promise<SuggestItem[]> {
     const q = query.trim();
-    // Two chars min — a single letter against a big library triggers an
-    // expensive full-table search inside Zotero's indexer.
     if (q.length < 2) return [];
-    // Scope the search when the active note has a `bib:` library. Without it,
-    // fan out one search per library in parallel so wall time is ~max(per-lib)
-    // rather than sum — BBT's `item.search` otherwise walks libraries serially.
+    const bibPath = this.currentBibPath();
+    if (bibPath) {
+      try {
+        const items = await this.scopeItems(bibPath);
+        if (items) {
+          return rankIndexed(items, q).map(({ hay: _hay, fam: _fam, words: _words, ...it }) => it);
+        }
+      } catch (e) {
+        if (e instanceof BBTConnectionError) new Notice(t("notice.suggestError", { message: e.message }), 4000);
+        return [];
+      }
+    }
+    // Scope the search when the active note has a `bib:` library; otherwise one call covers every
+    // library (a per-library fan-out only multiplies the requests Zotero handles at once).
     const libraryID = await this.resolveLibraryID(this.currentBibPath());
     try {
-      const perCall = 12000;
-      const rawResults = libraryID != null
-        ? await this.bbt.search(q, libraryID, perCall)
-        : await this.searchAllLibrariesParallel(q, perCall);
+      // Citekeys start with the first author's surname, so search by the first word and narrow by the
+      // rest ("lee 2026": keys beginning "lee", then year 2026) after BBT answers.
+      const words = q.toLowerCase().split(/[\s,;]+/).filter(Boolean);
+      const lead = words.find((w) => !/^\d{1,4}$/.test(w)) ?? words[0];
+      const rest = words.filter((w) => w !== lead);
+      let rawResults = await this.bbt.search(lead, libraryID ?? undefined, 12000);
+      if (rest.length) {
+        rawResults = rawResults.filter((r) => {
+          const hay = `${r.citekey} ${r.title ?? ""} ${r.author ?? ""}`.toLowerCase();
+          const yr = extractYear(r.date ?? "");
+          return rest.every((w) => (/^\d{1,4}$/.test(w) ? yr.startsWith(w) : hay.includes(w)));
+        });
+      }
       // De-duplicate by citekey in case a fan-out produces overlaps.
       const seen = new Set<string>();
       const deduped: typeof rawResults = [];
@@ -375,29 +512,6 @@ export default class ZoobPlugin extends Plugin {
       }
       return [];
     }
-  }
-
-  /**
-   * Parallel fan-out across every library — each call is scoped so BBT can
-   * short-circuit, and we merge results. Individual-library failures (timeout,
-   * error) are swallowed so a slow library can't hide results from a fast one.
-   */
-  private async searchAllLibrariesParallel(
-    q: string,
-    timeoutMs: number,
-  ): Promise<Array<{ citekey: string; title?: string; author?: string; date?: string; itemType?: string }>> {
-    let libs;
-    try {
-      libs = await this.bbt.libraries();
-    } catch {
-      // If we can't list libraries, fall through to a plain unscoped call.
-      return this.bbt.search(q, undefined, timeoutMs);
-    }
-    if (!libs.length) return this.bbt.search(q, undefined, timeoutMs);
-    const results = await Promise.all(
-      libs.map((lib) => this.bbt.search(q, lib.id, timeoutMs).catch(() => [])),
-    );
-    return results.flat();
   }
 
   insertCitationAtCursor(citekey: string): void {

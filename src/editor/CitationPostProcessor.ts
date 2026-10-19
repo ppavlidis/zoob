@@ -181,6 +181,14 @@ export function citationPostProcessor(plugin: ZoobPlugin): MarkdownPostProcessor
         const tokens = parseTokens(gm[0]);
         if (tokens.length === 0) continue;
         for (const tok of tokens) allKeys.add(tok.citekey);
+        // Adjacent groups (`[@a][@b]`) render as one multi-cite rather than butted-together parens.
+        const prev = hits[hits.length - 1];
+        if (prev && prev.end === gm.index) {
+          prev.tokens.push(...tokens);
+          prev.end = gm.index + gm[0].length;
+          prev.raw += gm[0];
+          continue;
+        }
         hits.push({
           start: gm.index,
           end: gm.index + gm[0].length,

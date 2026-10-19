@@ -62,6 +62,8 @@ export interface ZoobSettings {
    * scrolls. Cmd/Ctrl-click still opens the item in Zotero.
    */
   clickCitationToReveal: boolean;
+  /** Collapse `<!-- -->` and `%% %%` comments to a hoverable bubble in the editor. */
+  hideComments: boolean;
 }
 
 export const DEFAULT_SETTINGS: ZoobSettings = {
@@ -70,7 +72,7 @@ export const DEFAULT_SETTINGS: ZoobSettings = {
   cslCustomId: "",
   pdfOpenTarget: "zotero",
   abstractPreviewChars: 240,
-  hoverDelayMs: 250,
+  hoverDelayMs: 500,
   cacheTtlMs: 5 * 60 * 1000,
   citationRegex: "\\[-?@([\\w][\\w:.#$%&\\-+?<>~/]*)\\]",
   authorCompactThreshold: 10,
@@ -82,6 +84,7 @@ export const DEFAULT_SETTINGS: ZoobSettings = {
   language: "auto",
   renderInlineCitations: true,
   clickCitationToReveal: false,
+  hideComments: false,
 };
 
 export interface CslStyleOption {

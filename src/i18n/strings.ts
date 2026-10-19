@@ -29,6 +29,21 @@ export const STRINGS = {
     fr: "Insérer une citation depuis Zotero…",
     es: "Insertar cita desde Zotero…",
   },
+  "cmd.toggleComments": {
+    en: "Show/hide comments",
+    fr: "Afficher/masquer les commentaires",
+    es: "Mostrar/ocultar comentarios",
+  },
+  "action.hideComments": {
+    en: "Hide comments (show as bubbles)",
+    fr: "Masquer les commentaires (afficher en bulles)",
+    es: "Ocultar comentarios (mostrar como burbujas)",
+  },
+  "action.showComments": {
+    en: "Show comments",
+    fr: "Afficher les commentaires",
+    es: "Mostrar comentarios",
+  },
   "cmd.openPanel": {
     en: "Open references panel",
     fr: "Ouvrir le panneau des références",

@@ -203,11 +203,12 @@ export class BBTClient {
   libraries(): Promise<BBTLibrary[]> {
     if (!this.librariesCache) {
       this.librariesCache = (async () => {
+        // `true` asks BBT to include collections; without it they come back null.
         const raw = await this.call<BBTLibrary[] | Record<string, BBTLibrary>>(
           "user.groups",
-          [],
+          [true],
         );
-        return Array.isArray(raw) ? raw : Object.values(raw);
+        return (Array.isArray(raw) ? raw : Object.values(raw)).map(nestCollections);
       })().catch((e) => {
         // Don't pin a failed promise — try again next call.
         this.librariesCache = null;
@@ -217,22 +218,64 @@ export class BBTClient {
     return this.librariesCache;
   }
 
+  /**
+   * Every item in a library or collection (subcollections included) as CSL-JSON, via BBT's pull
+   * export. One request: ~1 s for a 1,500-item collection, ~2 s for a 4,300-item library.
+   */
+  async exportScope(lib: BBTLibrary, collection?: BBTCollection, timeoutMs = 60000): Promise<CSLItem[]> {
+    const base = this.opts.endpoint.replace(/\/json-rpc\/?$/, "");
+    // The user library exports by id; a group by id hangs (BBT 9.0.64), by name it works.
+    const libPart = lib.id === 1 ? `library;id:${lib.id}` : `group;name:${encodeURIComponent(lib.name)}`;
+    const collPart = collection ? `/collection;key:${collection.key}` : "";
+    const url = `${base}/export?/${libPart}${collPart}/export.json`;
+    const res = await Promise.race([
+      requestUrl({ url, headers: { "Zotero-Allowed-Request": "1" }, throw: false }),
+      new Promise<never>((_, reject) =>
+        window.setTimeout(() => reject(new BBTConnectionError(`Better BibTeX export timed out after ${timeoutMs}ms`)), timeoutMs),
+      ),
+    ]);
+    if (res.status !== 200) throw new BBTConnectionError(`Better BibTeX export returned HTTP ${res.status}: ${res.text.slice(0, 200)}`);
+    const items = JSON.parse(res.text) as CSLItem[];
+    return Array.isArray(items) ? items : [];
+  }
+
   /** Fuzzy item search. BBT returns an array of lightweight item descriptors. */
   async search(
     query: string,
     libraryID?: number,
     timeoutMs?: number,
   ): Promise<Array<{ citekey: string; title?: string; author?: string; date?: string; itemType?: string }>> {
-    const params: unknown[] = libraryID != null ? [query, libraryID] : [query];
-    const raw = await this.call<unknown>("item.search", params, timeoutMs);
-    if (!Array.isArray(raw)) return [];
-    return (raw as Array<Record<string, unknown>>).map((r) => ({
+    // Search citekeys only. BBT formats every hit before replying (~20 ms each), so a condition that
+    // matches thousands of items ("wang" in any creator: 1,552 hits, 14 s) stalls Zotero for every
+    // later request. Citekeys start with the first author's surname, so a prefix match is the fast path;
+    // from 5 characters, a substring match also finds the title words in the key.
+    const [byPrefix, byWord] = await Promise.all([
+      this.searchTerms([["citationKey", "beginsWith", query]], libraryID, timeoutMs),
+      query.length >= 5 ? this.searchTerms([["citationKey", "contains", query]], libraryID, timeoutMs) : [],
+    ]);
+    return [...byPrefix, ...byWord].map((r) => ({
       citekey: String(r.citekey ?? r["citation-key"] ?? r.citationKey ?? ""),
       title: typeof r.title === "string" ? r.title : undefined,
-      author: typeof r.author === "string" ? r.author : undefined,
-      date: typeof r.date === "string" ? r.date : undefined,
+      author: typeof r.author === "string" ? r.author : cslAuthor(r.author),
+      date: typeof r.date === "string" ? r.date : cslYear(r.issued),
       itemType: typeof r.itemType === "string" ? r.itemType : undefined,
     })).filter((x) => x.citekey);
+  }
+
+  /**
+   * `item.search` with an array of Zotero search conditions. The plain-string form
+   * fails on Zotero 10 with BBT 9.0.64 ("Invalid condition 'blockStart' in
+   * hasOperator()", BBT issue #3587); the array form does not use blocks.
+   */
+  private async searchTerms(
+    terms: unknown[][],
+    libraryID?: number,
+    timeoutMs?: number,
+  ): Promise<Array<Record<string, unknown>>> {
+    const all = [...terms, ["ignore_feeds"], ["itemType", "isNot", "attachment"]];
+    if (libraryID != null) all.push(["libraryID", "is", libraryID]);
+    const raw = await this.call<unknown>("item.search", [all], timeoutMs);
+    return Array.isArray(raw) ? (raw as Array<Record<string, unknown>>) : [];
   }
 
   /**
@@ -241,15 +284,13 @@ export class BBTClient {
    * we extract the trailing key. Returns undefined if no exact match.
    */
   async resolveItemKey(citekey: string, libraryID?: number): Promise<string | undefined> {
-    const params: unknown[] = libraryID != null ? [citekey, libraryID] : [citekey];
-    let raw: unknown;
+    let raw: Array<Record<string, unknown>>;
     try {
-      raw = await this.call<unknown>("item.search", params);
+      raw = await this.searchTerms([["citationKey", "is", citekey]], libraryID);
     } catch {
       return undefined;
     }
-    if (!Array.isArray(raw)) return undefined;
-    for (const r of raw as Array<Record<string, unknown>>) {
+    for (const r of raw) {
       const ck = r["citation-key"] ?? r.citekey ?? r.citationKey;
       if (ck !== citekey) continue;
       const id = typeof r.id === "string" ? r.id : "";
@@ -360,10 +401,11 @@ export class BBTClient {
   /** Collection paths for the given citekeys. */
   async collectionsOf(citekeys: string[], libraryID?: number): Promise<Record<string, string[]>> {
     if (citekeys.length === 0) return {};
-    const params: unknown[] =
-      libraryID != null ? [citekeys, libraryID] : [citekeys];
+    // item.collections(citekeys, includeParents: boolean) takes no library argument; passing the
+    // libraryID there fails BBT's schema check.
+    void libraryID;
     try {
-      const raw = await this.call<unknown>("item.collections", params);
+      const raw = await this.call<unknown>("item.collections", [citekeys]);
       if (raw && typeof raw === "object" && !Array.isArray(raw)) {
         return raw as Record<string, string[]>;
       }
@@ -540,9 +582,13 @@ function splitCslEntries(html: string): string[] {
 export function resolveCollection(
   libs: BBTLibrary[],
   path: string,
-): { library: BBTLibrary; collection: BBTCollection } | undefined {
+): { library: BBTLibrary; collection?: BBTCollection } | undefined {
   const parts = path.split("/").map((s) => s.trim()).filter(Boolean);
   if (parts.length === 0) return undefined;
+  if (parts.length === 1) {
+    const lib = libs.find((l) => String(l.name ?? "").toLowerCase() === parts[0].toLowerCase());
+    if (lib) return { library: lib };
+  }
 
   // Coerce both sides to string; BBT has occasionally returned library/
   // collection entries without a `name`, which would otherwise throw here.
@@ -579,4 +625,36 @@ export function resolveCollection(
     if (c) return { library: lib, collection: c };
   }
   return undefined;
+}
+
+/** "Merikangas et al." / "Merikangas & Almasy" from a CSL author array. */
+export function cslAuthor(a: unknown): string | undefined {
+  if (!Array.isArray(a) || a.length === 0) return undefined;
+  const name = (x: Record<string, unknown>) => String(x.family ?? x.literal ?? "");
+  const names = (a as Array<Record<string, unknown>>).map(name);
+  return names.length === 1 ? names[0] : names.length === 2 ? `${names[0]} & ${names[1]}` : `${names[0]} et al.`;
+}
+
+/** Year from a CSL `issued` date. */
+export function cslYear(d: unknown): string | undefined {
+  const parts = (d as { "date-parts"?: unknown[][] } | undefined)?.["date-parts"];
+  const y = Array.isArray(parts) && Array.isArray(parts[0]) ? parts[0][0] : undefined;
+  return y != null ? String(y) : undefined;
+}
+
+/**
+ * BBT's `user.groups` returns each library's collections as a flat list with `parentCollection`
+ * keys; resolveCollection walks a tree. Nest the flat form (an already-nested list passes through).
+ */
+function nestCollections(lib: BBTLibrary): BBTLibrary {
+  const flat = (lib.collections ?? []) as Array<BBTCollection & { parentCollection?: string | false }>;
+  if (!flat.some((c) => "parentCollection" in c)) return { ...lib, collections: flat };
+  const byKey = new Map(flat.map((c) => [c.key, { key: c.key, name: c.name, collections: [] as BBTCollection[] }]));
+  const roots: BBTCollection[] = [];
+  for (const c of flat) {
+    const node = byKey.get(c.key)!;
+    const parent = c.parentCollection ? byKey.get(c.parentCollection) : undefined;
+    (parent ? parent.collections : roots).push(node);
+  }
+  return { ...lib, collections: roots };
 }
