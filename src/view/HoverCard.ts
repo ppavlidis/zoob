@@ -10,6 +10,10 @@ export class HoverCard {
   private currentKey: string | null = null;
   private pinned = false;
   private disposed = false;
+  /** Bumped on every schedule/hide so an in-flight `show` can tell it has been superseded. */
+  private seq = 0;
+  private anchor: HTMLElement | DOMRect | null = null;
+  private watchdog: ((e: Event) => void) | null = null;
 
   constructor(private plugin: ZoobPlugin) {}
 
@@ -26,6 +30,7 @@ export class HoverCard {
   scheduleShow(citekey: string, anchor: HTMLElement | DOMRect): void {
     if (this.disposed) return;
     this.clearHideTimer();
+    this.seq++;
     if (this.currentKey === citekey && this.el) {
       // Already showing this key; keep it up.
       return;
@@ -38,12 +43,15 @@ export class HoverCard {
 
   scheduleHide(): void {
     if (this.pinned) return;
+    this.seq++;
     this.clearShowTimer();
     this.clearHideTimer();
     this.hideTimer = window.setTimeout(() => this.hide(), 80);
   }
 
   hide(): void {
+    this.seq++;
+    this.stopWatchdog();
     this.clearShowTimer();
     this.clearHideTimer();
     if (this.el) {
@@ -67,16 +75,55 @@ export class HoverCard {
     }
   }
 
+  /**
+   * While a card is up, hide it as soon as the pointer is over neither the card nor its anchor, the
+   * anchor has left the DOM, or the page scrolls. mouseleave alone strands the card when the anchor is
+   * re-rendered under the pointer or the pointer exits while the card is still being built.
+   */
+  private startWatchdog(card: HTMLElement, anchor: HTMLElement | DOMRect): void {
+    this.stopWatchdog();
+    const check = (e: Event) => {
+      if (this.pinned) return;
+      if (e.type === "scroll") {
+        if (!card.contains(e.target as Node)) this.hide();
+        return;
+      }
+      const t = e.target as Node | null;
+      if (t && card.contains(t)) return;
+      if (anchor instanceof Element) {
+        if (!anchor.isConnected) return this.hide();
+        if (t && anchor.contains(t)) return;
+      } else if (t instanceof Element && t.closest(".zoob-cite")) {
+        return;
+      }
+      this.scheduleHide();
+    };
+    this.watchdog = check;
+    document.addEventListener("mousemove", check, true);
+    document.addEventListener("scroll", check, true);
+  }
+
+  private stopWatchdog(): void {
+    if (!this.watchdog) return;
+    document.removeEventListener("mousemove", this.watchdog, true);
+    document.removeEventListener("scroll", this.watchdog, true);
+    this.watchdog = null;
+  }
+
   private async show(citekey: string, anchor: HTMLElement | DOMRect): Promise<void> {
+    const seq = ++this.seq;
     let item: ZoobItem | undefined;
     try {
       const bibPath = this.plugin.currentBibPath();
       const items = await this.plugin.getItems([citekey], { bibPath });
       item = items[0];
     } catch (e) {
+      if (seq !== this.seq) return;
       this.renderError(t("hover.error.reach", { message: (e as Error).message }), anchor);
       return;
     }
+    // The pointer left while the item was loading.
+    if (seq !== this.seq) return;
     if (!item) {
       this.renderError(t("hover.error.noItem", { citekey }), anchor);
       return;
@@ -105,6 +152,7 @@ export class HoverCard {
       card.addClass("zoob-hover--pinned");
     });
     this.position(card, anchor);
+    this.startWatchdog(card, anchor);
   }
 
   private renderError(msg: string, anchor: HTMLElement | DOMRect): void {

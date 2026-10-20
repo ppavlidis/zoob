@@ -954,20 +954,57 @@
 .zoob-comment-popup {
   position: fixed;
   z-index: var(--layer-tooltip, 100);
-  max-width: 360px;
-  padding: 8px 10px;
+  max-width: 440px;
+  max-height: 70vh;
+  overflow: hidden;
+  padding: 10px 12px;
   border-radius: 6px;
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
   box-shadow: var(--shadow-s);
   color: var(--text-normal);
-  font-size: var(--font-ui-small);
+  font-size: 12px;
+  line-height: 1.45;
   text-align: left;
   pointer-events: none;
 }
 .zoob-comment-popup p {
-  margin: 0 0 0.5em;
+  margin: 0 0 0.6em;
 }
 .zoob-comment-popup p:last-child {
   margin-bottom: 0;
+}
+.zoob-comment-popup__label {
+  margin-bottom: 0.4em;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-accent);
+}
+.zoob-comment-popup__clause {
+  margin-bottom: 0.45em;
+}
+.zoob-comment-popup__clause:last-child {
+  margin-bottom: 0;
+}
+.zoob-comment-popup__from {
+  padding-left: 1.2em;
+  text-indent: -1.2em;
+  color: var(--text-muted);
+}
+.zoob-comment-popup__arrow {
+  color: var(--text-faint);
+}
+.zoob-comment-popup code {
+  font-size: 10.5px;
+  padding: 0 3px;
+  word-break: break-all;
+  color: var(--text-muted);
+}
+.zoob-comment-popup em {
+  color: var(--text-muted);
+}
+.zoob-comment-popup strong {
+  font-weight: 600;
 }
